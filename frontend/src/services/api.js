@@ -30,8 +30,21 @@ async function request(url, options = {}) {
   }
 }
 
-export async function getArticles() {
-  return request('/articles');
+export async function getCategories() {
+  return request('/categories');
+}
+
+export async function getTags() {
+  return request('/tags');
+}
+
+export async function getArticles(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.category) params.append('category', filters.category);
+  if (filters.tag) params.append('tag', filters.tag);
+  
+  const queryString = params.toString();
+  return request(`/articles${queryString ? `?${queryString}` : ''}`);
 }
 
 export async function getArticle(id) {

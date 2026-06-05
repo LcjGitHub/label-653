@@ -139,6 +139,7 @@ export default function Admin() {
                 <tr>
                   <th>ID</th>
                   <th>标题</th>
+                  <th>分类</th>
                   <th>作者</th>
                   <th>发布时间</th>
                   <th>操作</th>
@@ -150,6 +151,15 @@ export default function Admin() {
                     <td>{article.id}</td>
                     <td className="table-title">
                       <Link to={`/article/${article.id}`}>{article.title}</Link>
+                    </td>
+                    <td>
+                      {article.category_name ? (
+                        <span className="badge badge-primary">
+                          {article.category_name}
+                        </span>
+                      ) : (
+                        <span className="text-muted">未分类</span>
+                      )}
                     </td>
                     <td>{article.author}</td>
                     <td>

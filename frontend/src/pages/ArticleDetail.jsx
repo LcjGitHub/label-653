@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getArticle, deleteArticle, getComments, createComment } from '../services/api';
+import { getArticle, deleteArticle, getComments, createComment, getCategories, getTags } from '../services/api';
 
 export default function ArticleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [article, setArticle] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -26,8 +28,14 @@ export default function ArticleDetail() {
   async function fetchArticle() {
     try {
       setLoading(true);
-      const data = await getArticle(id);
-      setArticle(data);
+      const [articleData, categoriesData, tagsData] = await Promise.all([
+        getArticle(id),
+        getCategories(),
+        getTags()
+      ]);
+      setArticle(articleData);
+      setCategories(categoriesData);
+      setTags(tagsData);
     } catch (err) {
       setError(err.message || '加载文章失败');
     } finally {
@@ -153,6 +161,38 @@ export default function ArticleDetail() {
                 </span>
               )}
             </div>
+            
+            {(article.category_name || (article.tags && article.tags.length > 0)) && (
+              <div className="article-taxonomy">
+                {article.category_name && (
+                  <div className="article-taxonomy-item">
+                    <span className="taxonomy-label">分类：</span>
+                    <Link 
+                      to={`/?category=${article.category_id}`} 
+                      className="article-category-badge"
+                    >
+                      {article.category_name}
+                    </Link>
+                  </div>
+                )}
+                {article.tags && article.tags.length > 0 && (
+                  <div className="article-taxonomy-item">
+                    <span className="taxonomy-label">标签：</span>
+                    <div className="article-tags-detail">
+                      {article.tags.map(tag => (
+                        <Link 
+                          key={tag.id} 
+                          to={`/?tag=${tag.id}`} 
+                          className="article-tag-badge"
+                        >
+                          #{tag.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </header>
           
           <div className="article-body">

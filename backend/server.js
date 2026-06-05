@@ -8,9 +8,104 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
+async function getArticleWithDetails(articleId) {
+  const article = await get(`
+    SELECT a.*, c.id as category_id, c.name as category_name
+    FROM articles a
+    LEFT JOIN categories c ON a.category_id = c.id
+    WHERE a.id = ?
+  `, [parseInt(articleId)]);
+
+  if (!article) return null;
+
+  const tags = await all(`
+    SELECT t.id, t.name
+    FROM tags t
+    INNER JOIN article_tags at ON t.id = at.tag_id
+    WHERE at.article_id = ?
+    ORDER BY t.name
+  `, [parseInt(articleId)]);
+
+  return {
+    ...article,
+    tags: tags
+  };
+}
+
+async function getArticlesWithDetails(whereClause = '', params = []) {
+  const articles = await all(`
+    SELECT a.*, c.id as category_id, c.name as category_name
+    FROM articles a
+    LEFT JOIN categories c ON a.category_id = c.id
+    ${whereClause}
+    ORDER BY a.created_at DESC
+  `, params);
+
+  for (const article of articles) {
+    const tags = await all(`
+      SELECT t.id, t.name
+      FROM tags t
+      INNER JOIN article_tags at ON t.id = at.tag_id
+      WHERE at.article_id = ?
+      ORDER BY t.name
+    `, [article.id]);
+    article.tags = tags;
+  }
+
+  return articles;
+}
+
+app.get('/api/categories', async (req, res) => {
+  try {
+    const categories = await all(`
+      SELECT c.*, COUNT(a.id) as article_count
+      FROM categories c
+      LEFT JOIN articles a ON c.id = a.category_id
+      GROUP BY c.id
+      ORDER BY c.name
+    `);
+    res.json(categories);
+  } catch (error) {
+    console.error('获取分类列表失败:', error);
+    res.status(500).json({ error: '获取分类列表失败' });
+  }
+});
+
+app.get('/api/tags', async (req, res) => {
+  try {
+    const tags = await all(`
+      SELECT t.*, COUNT(at.article_id) as article_count
+      FROM tags t
+      LEFT JOIN article_tags at ON t.id = at.tag_id
+      GROUP BY t.id
+      ORDER BY t.name
+    `);
+    res.json(tags);
+  } catch (error) {
+    console.error('获取标签列表失败:', error);
+    res.status(500).json({ error: '获取标签列表失败' });
+  }
+});
+
 app.get('/api/articles', async (req, res) => {
   try {
-    const articles = await all('SELECT * FROM articles ORDER BY created_at DESC');
+    const { category, tag } = req.query;
+    let whereClause = '';
+    let params = [];
+
+    if (category) {
+      whereClause = 'WHERE c.id = ?';
+      params = [parseInt(category)];
+    } else if (tag) {
+      whereClause = `
+        INNER JOIN article_tags at ON a.id = at.article_id
+        INNER JOIN tags t ON at.tag_id = t.id
+        WHERE t.id = ?
+      `;
+      params = [parseInt(tag)];
+    }
+
+    const articles = await getArticlesWithDetails(whereClause, params);
     res.json(articles);
   } catch (error) {
     console.error('获取文章列表失败:', error);
@@ -21,7 +116,7 @@ app.get('/api/articles', async (req, res) => {
 app.get('/api/articles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    const article = await getArticleWithDetails(id);
     
     if (!article) {
       return res.status(404).json({ error: '文章不存在' });
@@ -34,9 +129,29 @@ app.get('/api/articles/:id', async (req, res) => {
   }
 });
 
+async function updateArticleTags(articleId, tagIds) {
+  await run('DELETE FROM article_tags WHERE article_id = ?', [parseInt(articleId)]);
+  
+  if (tagIds && tagIds.length > 0) {
+    const placeholders = tagIds.map(() => '(?, ?)').join(', ');
+    const values = tagIds.flatMap(tagId => [parseInt(articleId), parseInt(tagId)]);
+    await run(`INSERT INTO article_tags (article_id, tag_id) VALUES ${placeholders}`, values);
+  }
+}
+
+async function getOrCreateTag(tagName) {
+  const existingTag = await get('SELECT * FROM tags WHERE name = ?', [tagName.trim()]);
+  if (existingTag) {
+    return existingTag;
+  }
+  
+  const result = await run('INSERT INTO tags (name) VALUES (?)', [tagName.trim()]);
+  return await get('SELECT * FROM tags WHERE id = ?', [result.lastID]);
+}
+
 app.post('/api/articles', async (req, res) => {
   try {
-    const { title, content, author } = req.body;
+    const { title, content, author, category_id, tags } = req.body;
     
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '文章标题不能为空' });
@@ -47,11 +162,34 @@ app.post('/api/articles', async (req, res) => {
     }
     
     const result = await run(
-      'INSERT INTO articles (title, content, author) VALUES (?, ?, ?)',
-      [title.trim(), content.trim(), author || '管理员']
+      'INSERT INTO articles (title, content, author, category_id) VALUES (?, ?, ?, ?)',
+      [
+        title.trim(), 
+        content.trim(), 
+        author || '管理员',
+        category_id ? parseInt(category_id) : null
+      ]
     );
+
+    const articleId = result.lastID;
+
+    if (tags && tags.length > 0) {
+      const tagIds = [];
+      for (const tagItem of tags) {
+        if (typeof tagItem === 'object' && tagItem.name) {
+          const tag = await getOrCreateTag(tagItem.name);
+          tagIds.push(tag.id);
+        } else if (typeof tagItem === 'number') {
+          tagIds.push(tagItem);
+        } else if (typeof tagItem === 'string') {
+          const tag = await getOrCreateTag(tagItem);
+          tagIds.push(tag.id);
+        }
+      }
+      await updateArticleTags(articleId, tagIds);
+    }
     
-    const newArticle = await get('SELECT * FROM articles WHERE id = ?', [result.lastID]);
+    const newArticle = await getArticleWithDetails(articleId);
     res.status(201).json(newArticle);
   } catch (error) {
     console.error('创建文章失败:', error);
@@ -62,7 +200,7 @@ app.post('/api/articles', async (req, res) => {
 app.put('/api/articles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, author } = req.body;
+    const { title, content, author, category_id, tags } = req.body;
     
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '文章标题不能为空' });
@@ -78,11 +216,33 @@ app.put('/api/articles/:id', async (req, res) => {
     }
     
     await run(
-      'UPDATE articles SET title = ?, content = ?, author = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [title.trim(), content.trim(), author || exists.author, parseInt(id)]
+      'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [
+        title.trim(), 
+        content.trim(), 
+        author || exists.author,
+        category_id !== undefined ? (category_id ? parseInt(category_id) : null) : exists.category_id,
+        parseInt(id)
+      ]
     );
+
+    if (tags !== undefined) {
+      const tagIds = [];
+      for (const tagItem of tags) {
+        if (typeof tagItem === 'object' && tagItem.name) {
+          const tag = await getOrCreateTag(tagItem.name);
+          tagIds.push(tag.id);
+        } else if (typeof tagItem === 'number') {
+          tagIds.push(tagItem);
+        } else if (typeof tagItem === 'string') {
+          const tag = await getOrCreateTag(tagItem);
+          tagIds.push(tag.id);
+        }
+      }
+      await updateArticleTags(parseInt(id), tagIds);
+    }
     
-    const updatedArticle = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    const updatedArticle = await getArticleWithDetails(id);
     res.json(updatedArticle);
   } catch (error) {
     console.error('更新文章失败:', error);
@@ -225,10 +385,12 @@ initDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`服务器运行在 http://localhost:${PORT}`);
     console.log(`API 接口:`);
-    console.log(`  GET    /api/articles              - 获取文章列表`);
-    console.log(`  GET    /api/articles/:id          - 获取单篇文章`);
-    console.log(`  POST   /api/articles              - 创建文章`);
-    console.log(`  PUT    /api/articles/:id          - 更新文章`);
+    console.log(`  GET    /api/categories            - 获取所有分类`);
+    console.log(`  GET    /api/tags                  - 获取所有标签`);
+    console.log(`  GET    /api/articles              - 获取文章列表(支持?category=id或?tag=id筛选)`);
+    console.log(`  GET    /api/articles/:id          - 获取单篇文章(含分类和标签)`);
+    console.log(`  POST   /api/articles              - 创建文章(支持category_id和tags)`);
+    console.log(`  PUT    /api/articles/:id          - 更新文章(支持category_id和tags)`);
     console.log(`  DELETE /api/articles/:id          - 删除文章`);
     console.log(`  GET    /api/articles/:id/comments - 获取文章评论列表`);
     console.log(`  POST   /api/articles/:id/comments - 添加评论`);
