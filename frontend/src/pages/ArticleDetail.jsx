@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getArticle, deleteArticle, getComments, createComment, getCategories, getTags } from '../services/api';
+import LikeButton from '../components/LikeButton';
+import FavoriteButton from '../components/FavoriteButton';
 
 export default function ArticleDetail() {
   const { id } = useParams();
@@ -201,6 +203,21 @@ export default function ArticleDetail() {
             ))}
           </div>
           
+          <div className="article-interactions">
+            <div className="interaction-buttons">
+              <LikeButton 
+                articleId={article.id} 
+                initialCount={article.like_count || 0}
+                size="large"
+              />
+              <FavoriteButton 
+                articleId={article.id} 
+                initialCount={article.favorite_count || 0}
+                size="large"
+              />
+            </div>
+          </div>
+
           <div className="article-actions">
             <Link to={`/edit/${article.id}`} className="btn btn-primary">
               编辑文章

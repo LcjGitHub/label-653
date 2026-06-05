@@ -8,6 +8,44 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
+function getUserIdentifier(req) {
+  const userId = req.headers['x-user-id'];
+  if (userId) {
+    return userId;
+  }
+  const ip = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || '';
+  return `guest_${ip}_${userAgent}`.replace(/[^a-zA-Z0-9_]/g, '_');
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.connection.remoteAddress || 'unknown';
+}
+
+async function getArticleLikeCount(articleId) {
+  const result = await get('SELECT COUNT(*) as count FROM likes WHERE article_id = ?', [parseInt(articleId)]);
+  return result ? result.count : 0;
+}
+
+async function getArticleFavoriteCount(articleId) {
+  const result = await get('SELECT COUNT(*) as count FROM favorites WHERE article_id = ?', [parseInt(articleId)]);
+  return result ? result.count : 0;
+}
+
+async function hasUserLiked(articleId, userIdentifier) {
+  const result = await get('SELECT 1 FROM likes WHERE article_id = ? AND user_identifier = ?', [parseInt(articleId), userIdentifier]);
+  return !!result;
+}
+
+async function hasUserFavorited(articleId, userIdentifier) {
+  const result = await get('SELECT 1 FROM favorites WHERE article_id = ? AND user_identifier = ?', [parseInt(articleId), userIdentifier]);
+  return !!result;
+}
+
 async function getArticleWithDetails(articleId) {
   const article = await get(`
     SELECT a.*, c.id as category_id, c.name as category_name
@@ -26,9 +64,14 @@ async function getArticleWithDetails(articleId) {
     ORDER BY t.name
   `, [parseInt(articleId)]);
 
+  const likeCount = await getArticleLikeCount(articleId);
+  const favoriteCount = await getArticleFavoriteCount(articleId);
+
   return {
     ...article,
-    tags: tags
+    tags: tags,
+    like_count: likeCount,
+    favorite_count: favoriteCount
   };
 }
 
@@ -50,6 +93,8 @@ async function getArticlesWithDetails(whereClause = '', params = []) {
       ORDER BY t.name
     `, [article.id]);
     article.tags = tags;
+    article.like_count = await getArticleLikeCount(article.id);
+    article.favorite_count = await getArticleFavoriteCount(article.id);
   }
 
   return articles;
@@ -239,6 +284,41 @@ app.get('/api/articles/search', async (req, res) => {
   } catch (error) {
     console.error('搜索文章失败:', error);
     res.status(500).json({ error: '搜索文章失败' });
+  }
+});
+
+app.get('/api/articles/stats', async (req, res) => {
+  try {
+    const stats = await all(`
+      SELECT 
+        a.id,
+        a.title,
+        COALESCE(l.like_count, 0) as like_count,
+        COALESCE(f.favorite_count, 0) as favorite_count,
+        COALESCE(c.comment_count, 0) as comment_count
+      FROM articles a
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as like_count 
+        FROM likes 
+        GROUP BY article_id
+      ) l ON a.id = l.article_id
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as favorite_count 
+        FROM favorites 
+        GROUP BY article_id
+      ) f ON a.id = f.article_id
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as comment_count 
+        FROM comments 
+        GROUP BY article_id
+      ) c ON a.id = c.article_id
+      ORDER BY a.created_at DESC
+    `);
+    
+    res.json(stats);
+  } catch (error) {
+    console.error('获取文章统计失败:', error);
+    res.status(500).json({ error: '获取文章统计失败' });
   }
 });
 
@@ -494,6 +574,182 @@ app.delete('/api/comments/:id', async (req, res) => {
   }
 });
 
+app.post('/api/articles/:id/like', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    const ipAddress = getClientIp(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const alreadyLiked = await hasUserLiked(id, userIdentifier);
+    if (alreadyLiked) {
+      return res.status(400).json({ error: '您已经点赞过这篇文章' });
+    }
+    
+    await run(
+      'INSERT INTO likes (article_id, user_identifier, ip_address) VALUES (?, ?, ?)',
+      [parseInt(id), userIdentifier, ipAddress]
+    );
+    
+    const likeCount = await getArticleLikeCount(id);
+    res.json({ 
+      message: '点赞成功', 
+      like_count: likeCount,
+      liked: true 
+    });
+  } catch (error) {
+    console.error('点赞失败:', error);
+    res.status(500).json({ error: '点赞失败' });
+  }
+});
+
+app.delete('/api/articles/:id/like', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const alreadyLiked = await hasUserLiked(id, userIdentifier);
+    if (!alreadyLiked) {
+      return res.status(400).json({ error: '您还没有点赞这篇文章' });
+    }
+    
+    await run(
+      'DELETE FROM likes WHERE article_id = ? AND user_identifier = ?',
+      [parseInt(id), userIdentifier]
+    );
+    
+    const likeCount = await getArticleLikeCount(id);
+    res.json({ 
+      message: '取消点赞成功', 
+      like_count: likeCount,
+      liked: false 
+    });
+  } catch (error) {
+    console.error('取消点赞失败:', error);
+    res.status(500).json({ error: '取消点赞失败' });
+  }
+});
+
+app.post('/api/articles/:id/favorite', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    const ipAddress = getClientIp(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const alreadyFavorited = await hasUserFavorited(id, userIdentifier);
+    if (alreadyFavorited) {
+      return res.status(400).json({ error: '您已经收藏过这篇文章' });
+    }
+    
+    await run(
+      'INSERT INTO favorites (article_id, user_identifier, ip_address) VALUES (?, ?, ?)',
+      [parseInt(id), userIdentifier, ipAddress]
+    );
+    
+    const favoriteCount = await getArticleFavoriteCount(id);
+    res.json({ 
+      message: '收藏成功', 
+      favorite_count: favoriteCount,
+      favorited: true 
+    });
+  } catch (error) {
+    console.error('收藏失败:', error);
+    res.status(500).json({ error: '收藏失败' });
+  }
+});
+
+app.delete('/api/articles/:id/favorite', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const alreadyFavorited = await hasUserFavorited(id, userIdentifier);
+    if (!alreadyFavorited) {
+      return res.status(400).json({ error: '您还没有收藏这篇文章' });
+    }
+    
+    await run(
+      'DELETE FROM favorites WHERE article_id = ? AND user_identifier = ?',
+      [parseInt(id), userIdentifier]
+    );
+    
+    const favoriteCount = await getArticleFavoriteCount(id);
+    res.json({ 
+      message: '取消收藏成功', 
+      favorite_count: favoriteCount,
+      favorited: false 
+    });
+  } catch (error) {
+    console.error('取消收藏失败:', error);
+    res.status(500).json({ error: '取消收藏失败' });
+  }
+});
+
+app.get('/api/articles/:id/likes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const likeCount = await getArticleLikeCount(id);
+    const liked = await hasUserLiked(id, userIdentifier);
+    
+    res.json({ 
+      like_count: likeCount,
+      liked: liked
+    });
+  } catch (error) {
+    console.error('获取点赞状态失败:', error);
+    res.status(500).json({ error: '获取点赞状态失败' });
+  }
+});
+
+app.get('/api/articles/:id/favorites', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userIdentifier = getUserIdentifier(req);
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const favoriteCount = await getArticleFavoriteCount(id);
+    const favorited = await hasUserFavorited(id, userIdentifier);
+    
+    res.json({ 
+      favorite_count: favoriteCount,
+      favorited: favorited
+    });
+  } catch (error) {
+    console.error('获取收藏状态失败:', error);
+    res.status(500).json({ error: '获取收藏状态失败' });
+  }
+});
+
 app.get('/api/hot-searches', async (req, res) => {
   try {
     const articles = await all(`
@@ -605,6 +861,13 @@ initDatabase().then(() => {
     console.log(`  POST   /api/articles/:id/comments - 添加评论`);
     console.log(`  DELETE /api/comments/:id          - 删除评论`);
     console.log(`  GET    /api/comments              - 获取所有评论(管理)`);
+    console.log(`  POST   /api/articles/:id/like     - 点赞文章`);
+    console.log(`  DELETE /api/articles/:id/like     - 取消点赞`);
+    console.log(`  POST   /api/articles/:id/favorite - 收藏文章`);
+    console.log(`  DELETE /api/articles/:id/favorite - 取消收藏`);
+    console.log(`  GET    /api/articles/:id/likes    - 获取文章点赞状态`);
+    console.log(`  GET    /api/articles/:id/favorites- 获取文章收藏状态`);
+    console.log(`  GET    /api/articles/stats        - 获取所有文章统计数据`);
   });
 }).catch(error => {
   console.error('数据库初始化失败:', error);

@@ -90,6 +90,38 @@ function initDatabase() {
                   return;
                 }
 
+                db.run(`
+                  CREATE TABLE IF NOT EXISTS likes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_id INTEGER NOT NULL,
+                    user_identifier TEXT NOT NULL,
+                    ip_address TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+                    UNIQUE(article_id, user_identifier)
+                  )
+                `, (err) => {
+                  if (err) {
+                    reject(err);
+                    return;
+                  }
+
+                  db.run(`
+                    CREATE TABLE IF NOT EXISTS favorites (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      article_id INTEGER NOT NULL,
+                      user_identifier TEXT NOT NULL,
+                      ip_address TEXT,
+                      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+                      UNIQUE(article_id, user_identifier)
+                    )
+                  `, (err) => {
+                    if (err) {
+                      reject(err);
+                      return;
+                    }
+
                 db.get('SELECT COUNT(*) as count FROM categories', [], (err, row) => {
                   if (err) {
                     reject(err);
@@ -222,6 +254,8 @@ function initDatabase() {
                     }
                   });
                 }
+                  });
+                });
               });
             });
           });

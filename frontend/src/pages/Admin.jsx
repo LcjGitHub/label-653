@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getArticles, deleteArticle, getAllComments, deleteComment } from '../services/api';
+import { getArticles, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -8,8 +8,10 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState('articles');
   const [articles, setArticles] = useState([]);
   const [comments, setComments] = useState([]);
+  const [stats, setStats] = useState([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
@@ -17,8 +19,10 @@ export default function Admin() {
   useEffect(() => {
     if (activeTab === 'articles') {
       fetchArticles();
-    } else {
+    } else if (activeTab === 'comments') {
       fetchComments();
+    } else {
+      fetchStats();
     }
   }, [activeTab]);
 
@@ -51,6 +55,19 @@ export default function Admin() {
       setError(err.message || '加载评论列表失败');
     } finally {
       setCommentsLoading(false);
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      setStatsLoading(true);
+      setError(null);
+      const data = await getArticleStats();
+      setStats(data);
+    } catch (err) {
+      setError(err.message || '加载统计数据失败');
+    } finally {
+      setStatsLoading(false);
     }
   }
 
@@ -92,7 +109,7 @@ export default function Admin() {
       <div className="admin-header">
         <div>
           <h1>后台管理</h1>
-          <p className="page-subtitle">管理文章和评论</p>
+          <p className="page-subtitle">管理文章、评论和数据统计</p>
         </div>
         {activeTab === 'articles' && (
           <Link to="/create" className="btn btn-primary">
@@ -114,6 +131,12 @@ export default function Admin() {
         >
           评论管理
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
+          onClick={() => setActiveTab('stats')}
+        >
+          数据统计
+        </button>
       </div>
 
       {error && (
@@ -123,127 +146,224 @@ export default function Admin() {
       )}
 
       <div className="admin-table-container">
-        {activeTab === 'articles' ? (
-          articlesLoading ? (
-            <div className="loading">加载中...</div>
-          ) : articles.length === 0 ? (
-            <div className="empty-state">
-              <p>暂无文章</p>
-              <Link to="/create" className="btn btn-primary">
-                创建第一篇文章
-              </Link>
-            </div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>标题</th>
-                  <th>分类</th>
-                  <th>作者</th>
-                  <th>发布时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {articles.map(article => (
-                  <tr key={article.id}>
-                    <td>{article.id}</td>
-                    <td className="table-title">
-                      <Link to={`/article/${article.id}`}>{article.title}</Link>
-                    </td>
-                    <td>
-                      {article.category_name ? (
-                        <span className="badge badge-primary">
-                          {article.category_name}
+        {(() => {
+          if (activeTab === 'articles') {
+            if (articlesLoading) return <div className="loading">加载中...</div>;
+            if (articles.length === 0) {
+              return (
+                <div className="empty-state">
+                  <p>暂无文章</p>
+                  <Link to="/create" className="btn btn-primary">
+                    创建第一篇文章
+                  </Link>
+                </div>
+              );
+            }
+            return (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>标题</th>
+                    <th>分类</th>
+                    <th>作者</th>
+                    <th>点赞数</th>
+                    <th>收藏数</th>
+                    <th>发布时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {articles.map(article => (
+                    <tr key={article.id}>
+                      <td>{article.id}</td>
+                      <td className="table-title">
+                        <Link to={`/article/${article.id}`}>{article.title}</Link>
+                      </td>
+                      <td>
+                        {article.category_name ? (
+                          <span className="badge badge-primary">
+                            {article.category_name}
+                          </span>
+                        ) : (
+                          <span className="text-muted">未分类</span>
+                        )}
+                      </td>
+                      <td>{article.author}</td>
+                      <td>
+                        <span className="badge badge-like">
+                          {article.like_count || 0}
                         </span>
-                      ) : (
-                        <span className="text-muted">未分类</span>
-                      )}
-                    </td>
-                    <td>{article.author}</td>
-                    <td>
-                      {new Date(article.created_at).toLocaleString('zh-CN')}
-                    </td>
-                    <td className="table-actions">
-                      <button
-                        className="btn-action btn-edit"
-                        onClick={() => navigate(`/edit/${article.id}`)}
-                      >
-                        编辑
-                      </button>
-                      <button
-                        className="btn-action btn-delete"
-                        onClick={() => confirmDelete(article.id, 'article')}
-                      >
-                        删除
-                      </button>
-                    </td>
+                      </td>
+                      <td>
+                        <span className="badge badge-favorite">
+                          {article.favorite_count || 0}
+                        </span>
+                      </td>
+                      <td>
+                        {new Date(article.created_at).toLocaleString('zh-CN')}
+                      </td>
+                      <td className="table-actions">
+                        <button
+                          className="btn-action btn-edit"
+                          onClick={() => navigate(`/edit/${article.id}`)}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          className="btn-action btn-delete"
+                          onClick={() => confirmDelete(article.id, 'article')}
+                        >
+                          删除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          }
+          
+          if (activeTab === 'comments') {
+            if (commentsLoading) return <div className="loading">加载中...</div>;
+            if (comments.length === 0) {
+              return (
+                <div className="empty-state">
+                  <p>暂无评论</p>
+                </div>
+              );
+            }
+            return (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>评论者</th>
+                    <th>评论内容</th>
+                    <th>所属文章</th>
+                    <th>类型</th>
+                    <th>时间</th>
+                    <th>操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : (
-          commentsLoading ? (
-            <div className="loading">加载中...</div>
-          ) : comments.length === 0 ? (
-            <div className="empty-state">
-              <p>暂无评论</p>
+                </thead>
+                <tbody>
+                  {comments.map(comment => (
+                    <tr key={comment.id}>
+                      <td>{comment.id}</td>
+                      <td>{comment.nickname}</td>
+                      <td className="table-content">
+                        {comment.parent_nickname && (
+                          <span className="reply-mention">@{comment.parent_nickname} </span>
+                        )}
+                        {comment.content.length > 50 ? comment.content.substring(0, 50) + '...' : comment.content}
+                      </td>
+                      <td className="table-title">
+                        <Link to={`/article/${comment.article_id}`}>
+                          {comment.article_title || '文章已删除'}
+                        </Link>
+                      </td>
+                      <td>
+                        {comment.parent_id ? (
+                          <span className="badge badge-secondary">回复</span>
+                        ) : (
+                          <span className="badge badge-primary">评论</span>
+                        )}
+                      </td>
+                      <td>
+                        {new Date(comment.created_at).toLocaleString('zh-CN')}
+                      </td>
+                      <td className="table-actions">
+                        <button
+                          className="btn-action btn-delete"
+                          onClick={() => confirmDelete(comment.id, 'comment')}
+                        >
+                          删除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          }
+          
+          if (statsLoading) return <div className="loading">加载中...</div>;
+          if (stats.length === 0) {
+            return (
+              <div className="empty-state">
+                <p>暂无统计数据</p>
+              </div>
+            );
+          }
+          return (
+            <div>
+              <div className="stats-summary">
+                <div className="stat-card">
+                  <div className="stat-label">总点赞数</div>
+                  <div className="stat-value">
+                    {stats.reduce((sum, s) => sum + s.like_count, 0)}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">总收藏数</div>
+                  <div className="stat-value">
+                    {stats.reduce((sum, s) => sum + s.favorite_count, 0)}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">总评论数</div>
+                  <div className="stat-value">
+                    {stats.reduce((sum, s) => sum + s.comment_count, 0)}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label">文章总数</div>
+                  <div className="stat-value">{stats.length}</div>
+                </div>
+              </div>
+              
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>文章标题</th>
+                    <th>点赞数</th>
+                    <th>收藏数</th>
+                    <th>评论数</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map(stat => (
+                    <tr key={stat.id}>
+                      <td>{stat.id}</td>
+                      <td className="table-title">
+                        <Link to={`/article/${stat.id}`}>{stat.title}</Link>
+                      </td>
+                      <td>
+                        <span className="badge badge-like">{stat.like_count}</span>
+                      </td>
+                      <td>
+                        <span className="badge badge-favorite">{stat.favorite_count}</span>
+                      </td>
+                      <td>
+                        <span className="badge badge-comment">{stat.comment_count}</span>
+                      </td>
+                      <td className="table-actions">
+                        <button
+                          className="btn-action btn-edit"
+                          onClick={() => navigate(`/edit/${stat.id}`)}
+                        >
+                          编辑
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>评论者</th>
-                  <th>评论内容</th>
-                  <th>所属文章</th>
-                  <th>类型</th>
-                  <th>时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comments.map(comment => (
-                  <tr key={comment.id}>
-                    <td>{comment.id}</td>
-                    <td>{comment.nickname}</td>
-                    <td className="table-content">
-                      {comment.parent_nickname && (
-                        <span className="reply-mention">@{comment.parent_nickname} </span>
-                      )}
-                      {comment.content.length > 50 ? comment.content.substring(0, 50) + '...' : comment.content}
-                    </td>
-                    <td className="table-title">
-                      <Link to={`/article/${comment.article_id}`}>
-                        {comment.article_title || '文章已删除'}
-                      </Link>
-                    </td>
-                    <td>
-                      {comment.parent_id ? (
-                        <span className="badge badge-secondary">回复</span>
-                      ) : (
-                        <span className="badge badge-primary">评论</span>
-                      )}
-                    </td>
-                    <td>
-                      {new Date(comment.created_at).toLocaleString('zh-CN')}
-                    </td>
-                    <td className="table-actions">
-                      <button
-                        className="btn-action btn-delete"
-                        onClick={() => confirmDelete(comment.id, 'comment')}
-                      >
-                        删除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        )}
+          );
+        })()}
       </div>
 
       {deleteId && (

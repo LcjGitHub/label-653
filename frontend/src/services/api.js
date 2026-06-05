@@ -1,4 +1,16 @@
 const API_BASE = '/api';
+const USER_ID_KEY = 'blog_user_identifier';
+
+function getOrCreateUserId() {
+  let userId = localStorage.getItem(USER_ID_KEY);
+  if (!userId) {
+    const randomStr = Math.random().toString(36).substring(2, 15) + 
+                      Math.random().toString(36).substring(2, 15);
+    userId = `user_${Date.now()}_${randomStr}`;
+    localStorage.setItem(USER_ID_KEY, userId);
+  }
+  return userId;
+}
 
 async function handleError(response) {
   try {
@@ -17,7 +29,14 @@ async function handleError(response) {
 
 async function request(url, options = {}) {
   try {
-    const response = await fetch(`${API_BASE}${url}`, options);
+    const headers = options.headers || {};
+    const userId = getOrCreateUserId();
+    headers['x-user-id'] = userId;
+    
+    const response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers,
+    });
     if (!response.ok) {
       await handleError(response);
     }
@@ -109,4 +128,40 @@ export async function searchArticles(keyword, options = {}) {
 
 export async function getHotSearches() {
   return request('/hot-searches');
+}
+
+export async function likeArticle(articleId) {
+  return request(`/articles/${articleId}/like`, {
+    method: 'POST',
+  });
+}
+
+export async function unlikeArticle(articleId) {
+  return request(`/articles/${articleId}/like`, {
+    method: 'DELETE',
+  });
+}
+
+export async function favoriteArticle(articleId) {
+  return request(`/articles/${articleId}/favorite`, {
+    method: 'POST',
+  });
+}
+
+export async function unfavoriteArticle(articleId) {
+  return request(`/articles/${articleId}/favorite`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getArticleLikes(articleId) {
+  return request(`/articles/${articleId}/likes`);
+}
+
+export async function getArticleFavorites(articleId) {
+  return request(`/articles/${articleId}/favorites`);
+}
+
+export async function getArticleStats() {
+  return request('/articles/stats');
 }

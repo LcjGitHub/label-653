@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import LikeButton from './LikeButton';
 
 export default function ArticleCard({ article }) {
   const excerpt = article.content.length > 150
@@ -42,6 +43,14 @@ export default function ArticleCard({ article }) {
       
       <p className="article-card-excerpt">{excerpt}</p>
       <div className="article-card-footer">
+        <div className="card-stats">
+          <LikeButton 
+            articleId={article.id} 
+            initialCount={article.like_count || 0}
+            showStatus={false}
+            size="small"
+          />
+        </div>
         <Link to={`/article/${article.id}`} className="read-more">
           阅读全文 →
         </Link>
