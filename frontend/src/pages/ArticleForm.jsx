@@ -19,7 +19,8 @@ export default function ArticleForm({ isEdit = false }) {
   const [tagSuggestions, setTagSuggestions] = useState([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fetchLoading, setFetchLoading] = useState(isEdit);
+  const [fetchLoading, setFetchLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [error, setError] = useState(null);
 
@@ -35,15 +36,16 @@ export default function ArticleForm({ isEdit = false }) {
 
   async function loadFormData() {
     try {
+      setFetchLoading(true);
       const [categoriesData, tagsData] = await Promise.all([
         getCategories(),
         getTags()
       ]);
       setCategories(categoriesData);
       setAllTags(tagsData);
+      setDataLoaded(true);
 
       if (isEdit && id) {
-        setFetchLoading(true);
         setFetchFailed(false);
         const data = await getArticle(id);
         setFormData({
@@ -189,15 +191,19 @@ export default function ArticleForm({ isEdit = false }) {
     );
   }
 
-  if (isEdit && fetchFailed) {
+  if (fetchFailed && !dataLoaded) {
     return (
       <div className="container">
         <div className="error" ref={errorRef}>
-          {error || '加载文章失败'}
+          {error || '加载数据失败'}
         </div>
         <Link to="/" className="back-link">← 返回列表</Link>
       </div>
     );
+  }
+
+  if (!dataLoaded) {
+    return null;
   }
 
   return (
