@@ -63,3 +63,27 @@ export async function deleteArticle(id) {
     method: 'DELETE',
   });
 }
+
+export async function getComments(articleId) {
+  return request(`/articles/${articleId}/comments`);
+}
+
+export async function createComment(articleId, comment) {
+  return request(`/articles/${articleId}/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(comment),
+  });
+}
+
+export async function deleteComment(id) {
+  return request(`/comments/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getAllComments() {
+  return request('/comments');
+}

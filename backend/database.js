@@ -28,37 +28,55 @@ function initDatabase() {
           reject(err);
           return;
         }
-        
-        db.get('SELECT COUNT(*) as count FROM articles', [], (err, row) => {
+
+        db.run(`
+          CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            parent_id INTEGER,
+            nickname TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
+          )
+        `, (err) => {
           if (err) {
             reject(err);
             return;
           }
-          
-          if (row.count === 0) {
-            const insertStmt = `
-              INSERT INTO articles (title, content, author) VALUES 
-              (?, ?, ?),
-              (?, ?, ?),
-              (?, ?, ?)
-            `;
-            const values = [
-              '欢迎使用博客系统', '这是一个基于节点服务框架、界面组件库与嵌入式数据库构建的完整博客系统。您可以在这里发布、编辑和删除文章，记录生活点滴与技术心得。', '系统管理员',
-              '前端开发最佳实践', '在现代前端开发中，代码规范与工程化至关重要。本文将分享项目结构设计、状态管理、性能优化等方面的实战经验，帮助您构建高质量的前端应用。', '技术小编',
-              '深入理解响应式编程', '响应式编程是一种面向数据流和变化传播的编程范式。本文将通过实际案例，深入浅出地介绍响应式编程的核心概念与应用场景。', '前端开发'
-            ];
-            
-            db.run(insertStmt, values, (err) => {
+
+            db.get('SELECT COUNT(*) as count FROM articles', [], (err, row) => {
               if (err) {
                 reject(err);
                 return;
               }
-              console.log('示例数据插入成功');
-              resolve(db);
+              
+              if (row.count === 0) {
+                const insertStmt = `
+                  INSERT INTO articles (title, content, author) VALUES 
+                  (?, ?, ?),
+                  (?, ?, ?),
+                  (?, ?, ?)
+                `;
+                const values = [
+                  '欢迎使用博客系统', '这是一个基于节点服务框架、界面组件库与嵌入式数据库构建的完整博客系统。您可以在这里发布、编辑和删除文章，记录生活点滴与技术心得。', '系统管理员',
+                  '前端开发最佳实践', '在现代前端开发中，代码规范与工程化至关重要。本文将分享项目结构设计、状态管理、性能优化等方面的实战经验，帮助您构建高质量的前端应用。', '技术小编',
+                  '深入理解响应式编程', '响应式编程是一种面向数据流和变化传播的编程范式。本文将通过实际案例，深入浅出地介绍响应式编程的核心概念与应用场景。', '前端开发'
+                ];
+                
+                db.run(insertStmt, values, (err) => {
+                  if (err) {
+                    reject(err);
+                    return;
+                  }
+                  console.log('示例数据插入成功');
+                  resolve(db);
+                });
+              } else {
+                resolve(db);
+              }
             });
-          } else {
-            resolve(db);
-          }
         });
       });
     });
