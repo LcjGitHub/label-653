@@ -8,7 +8,8 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState('articles');
   const [articles, setArticles] = useState([]);
   const [comments, setComments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [articlesLoading, setArticlesLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
@@ -29,25 +30,27 @@ export default function Admin() {
 
   async function fetchArticles() {
     try {
-      setLoading(true);
+      setArticlesLoading(true);
+      setError(null);
       const data = await getArticles();
       setArticles(data);
     } catch (err) {
       setError(err.message || '加载文章列表失败');
     } finally {
-      setLoading(false);
+      setArticlesLoading(false);
     }
   }
 
   async function fetchComments() {
     try {
-      setLoading(true);
+      setCommentsLoading(true);
+      setError(null);
       const data = await getAllComments();
       setComments(data);
     } catch (err) {
       setError(err.message || '加载评论列表失败');
     } finally {
-      setLoading(false);
+      setCommentsLoading(false);
     }
   }
 
@@ -82,14 +85,6 @@ export default function Admin() {
   function confirmDelete(id, type) {
     setDeleteId(id);
     setDeleteType(type);
-  }
-
-  if (loading) {
-    return (
-      <div className="container">
-        <div className="loading">加载中...</div>
-      </div>
-    );
   }
 
   return (
@@ -129,7 +124,9 @@ export default function Admin() {
 
       <div className="admin-table-container">
         {activeTab === 'articles' ? (
-          articles.length === 0 ? (
+          articlesLoading ? (
+            <div className="loading">加载中...</div>
+          ) : articles.length === 0 ? (
             <div className="empty-state">
               <p>暂无文章</p>
               <Link to="/create" className="btn btn-primary">
@@ -156,7 +153,7 @@ export default function Admin() {
                     </td>
                     <td>{article.author}</td>
                     <td>
-                      {new Date(article.created_at).toLocaleDateString('zh-CN')}
+                      {new Date(article.created_at).toLocaleString('zh-CN')}
                     </td>
                     <td className="table-actions">
                       <button
@@ -178,7 +175,9 @@ export default function Admin() {
             </table>
           )
         ) : (
-          comments.length === 0 ? (
+          commentsLoading ? (
+            <div className="loading">加载中...</div>
+          ) : comments.length === 0 ? (
             <div className="empty-state">
               <p>暂无评论</p>
             </div>
@@ -219,7 +218,7 @@ export default function Admin() {
                       )}
                     </td>
                     <td>
-                      {new Date(comment.created_at).toLocaleDateString('zh-CN')}
+                      {new Date(comment.created_at).toLocaleString('zh-CN')}
                     </td>
                     <td className="table-actions">
                       <button

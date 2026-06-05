@@ -11,6 +11,8 @@ export default function ArticleDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(null);
+  const [commentSubmitError, setCommentSubmitError] = useState(null);
   const [nickname, setNickname] = useState('');
   const [content, setContent] = useState('');
   const [replyTo, setReplyTo] = useState(null);
@@ -36,10 +38,11 @@ export default function ArticleDetail() {
   async function fetchComments() {
     try {
       setCommentsLoading(true);
+      setCommentsError(null);
       const data = await getComments(id);
       setComments(data);
     } catch (err) {
-      console.error('加载评论失败:', err);
+      setCommentsError(err.message || '加载评论失败');
     } finally {
       setCommentsLoading(false);
     }
@@ -53,6 +56,7 @@ export default function ArticleDetail() {
 
     try {
       setSubmitting(true);
+      setCommentSubmitError(null);
       const newComment = await createComment(id, {
         nickname: nickname.trim(),
         content: content.trim(),
@@ -77,7 +81,7 @@ export default function ArticleDetail() {
       setContent('');
       setReplyTo(null);
     } catch (err) {
-      setError('发表评论失败：' + (err.message || '未知错误'));
+      setCommentSubmitError('发表评论失败：' + (err.message || '未知错误'));
     } finally {
       setSubmitting(false);
     }
@@ -85,12 +89,13 @@ export default function ArticleDetail() {
 
   function handleReply(comment) {
     setReplyTo(comment);
-    setContent(`@${comment.nickname} `);
+    setContent('');
   }
 
   function cancelReply() {
     setReplyTo(null);
     setContent('');
+    setCommentSubmitError(null);
   }
 
   async function handleDelete() {
@@ -194,8 +199,20 @@ export default function ArticleDetail() {
 
         <section className="comments-section">
           <h2 className="comments-title">
-            评论 ({comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0)})
+            评论 (
+            {commentsLoading ? (
+              <span className="loading-text">加载中...</span>
+            ) : (
+              comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0)
+            )}
+            )
           </h2>
+
+          {commentSubmitError && (
+            <div className="error comment-error">
+              {commentSubmitError}
+            </div>
+          )}
 
           <form className="comment-form" onSubmit={handleSubmitComment}>
             {replyTo && (
@@ -220,7 +237,7 @@ export default function ArticleDetail() {
             <div className="form-group">
               <textarea
                 className="form-textarea"
-                placeholder="写下您的评论..."
+                placeholder={replyTo ? '写下您的回复...' : '写下您的评论...'}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 required
@@ -233,13 +250,20 @@ export default function ArticleDetail() {
               className="btn btn-primary"
               disabled={submitting || !nickname.trim() || !content.trim()}
             >
-              {submitting ? '发表中...' : '发表评论'}
+              {submitting ? '发表中...' : (replyTo ? '发表回复' : '发表评论')}
             </button>
           </form>
 
           <div className="comments-list">
             {commentsLoading ? (
               <div className="comments-loading">加载评论中...</div>
+            ) : commentsError ? (
+              <div className="error comments-error">
+                {commentsError}
+                <button className="retry-btn" onClick={fetchComments}>
+                  重试
+                </button>
+              </div>
             ) : comments.length === 0 ? (
               <div className="no-comments">暂无评论，快来抢沙发吧！</div>
             ) : (

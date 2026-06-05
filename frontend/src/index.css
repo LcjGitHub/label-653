@@ -786,6 +786,42 @@ a:hover {
   margin-bottom: 0;
 }
 
+.comment-error,
+.comments-error {
+  margin-bottom: 16px;
+}
+
+.comments-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.retry-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.retry-btn:hover {
+  color: var(--primary-dark);
+}
+
+.loading-text {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.admin-table-container .loading {
+  padding: 60px 20px;
+}
+
 @media (max-width: 768px) {
   .main-content {
     padding: 24px 0;
