@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { searchArticles, getHotSearches } from '../services/api';
+import { debounce } from '../utils/debounce';
 
 export default function SearchResults() {
   const [searchParams] = useSearchParams();
@@ -24,28 +25,35 @@ export default function SearchResults() {
     fetchHotSearches();
   }, []);
 
+  const doSearch = useCallback(async (searchKeyword) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await searchArticles(searchKeyword);
+      setSearchResult(data);
+    } catch (err) {
+      setError(err.message || '搜索失败');
+      setSearchResult(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const debouncedSearch = useCallback(
+    debounce((searchKeyword) => {
+      doSearch(searchKeyword);
+    }, 300),
+    [doSearch]
+  );
+
   useEffect(() => {
     if (!keyword) {
       setSearchResult(null);
       return;
     }
 
-    async function fetchSearchResults() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await searchArticles(keyword);
-        setSearchResult(data);
-      } catch (err) {
-        setError(err.message || '搜索失败');
-        setSearchResult(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchSearchResults();
-  }, [keyword]);
+    debouncedSearch(keyword);
+  }, [keyword, debouncedSearch]);
 
   const handleHotSearchClick = (hotKeyword) => {
     navigate(`/search?q=${encodeURIComponent(hotKeyword)}`);

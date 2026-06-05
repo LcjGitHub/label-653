@@ -66,40 +66,65 @@ function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function generateExcerpt(content, keyword, maxLength = 150) {
-  if (!content) return '';
+function extractKeywordFragment(text, keyword, maxLength = 150) {
+  if (!text) return '';
   
-  const lowerContent = content.toLowerCase();
+  const lowerText = text.toLowerCase();
   const lowerKeyword = keyword.toLowerCase();
-  const keywordIndex = lowerContent.indexOf(lowerKeyword);
+  const keywordIndex = lowerText.indexOf(lowerKeyword);
   
   if (keywordIndex === -1) {
-    return content.length > maxLength 
-      ? content.substring(0, maxLength) + '...' 
-      : content;
+    return text.length > maxLength 
+      ? text.substring(0, maxLength) + '...' 
+      : text;
   }
   
   const halfLength = Math.floor(maxLength / 2);
   let start = Math.max(0, keywordIndex - halfLength);
-  let end = Math.min(content.length, keywordIndex + keyword.length + halfLength);
+  let end = Math.min(text.length, keywordIndex + keyword.length + halfLength);
   
   if (start > 0 && start < 20) {
     start = 0;
   }
-  if (end < content.length && content.length - end < 20) {
-    end = content.length;
+  if (end < text.length && text.length - end < 20) {
+    end = text.length;
   }
   
-  let excerpt = content.substring(start, end);
+  let fragment = text.substring(start, end);
   
   if (start > 0) {
-    excerpt = '...' + excerpt;
+    fragment = '...' + fragment;
   }
-  if (end < content.length) {
-    excerpt = excerpt + '...';
+  if (end < text.length) {
+    fragment = fragment + '...';
   }
   
-  return excerpt;
+  return fragment;
+}
+
+function generateExcerpt(title, content, keyword, maxLength = 150) {
+  const lowerTitle = title ? title.toLowerCase() : '';
+  const lowerContent = content ? content.toLowerCase() : '';
+  const lowerKeyword = keyword.toLowerCase();
+  
+  const titleHasKeyword = lowerTitle.includes(lowerKeyword);
+  const contentHasKeyword = lowerContent.includes(lowerKeyword);
+  
+  if (titleHasKeyword && !contentHasKeyword) {
+    return extractKeywordFragment(title, keyword, maxLength);
+  }
+  
+  if (contentHasKeyword) {
+    return extractKeywordFragment(content, keyword, maxLength);
+  }
+  
+  if (title) {
+    return title.length > maxLength 
+      ? title.substring(0, maxLength) + '...' 
+      : title;
+  }
+  
+  return content ? (content.length > maxLength ? content.substring(0, maxLength) + '...' : content) : '';
 }
 
 app.get('/api/categories', async (req, res) => {
@@ -202,7 +227,7 @@ app.get('/api/articles/search', async (req, res) => {
       
       article.title_highlighted = highlightKeyword(article.title, keyword);
       article.content_highlighted = highlightKeyword(article.content, keyword);
-      article.excerpt = generateExcerpt(article.content, keyword, 150);
+      article.excerpt = generateExcerpt(article.title, article.content, keyword, 150);
       article.excerpt_highlighted = highlightKeyword(article.excerpt, keyword);
     }
     
@@ -471,16 +496,74 @@ app.delete('/api/comments/:id', async (req, res) => {
 
 app.get('/api/hot-searches', async (req, res) => {
   try {
-    const hotKeywords = [
-      { keyword: 'JavaScript', count: 128 },
-      { keyword: 'React', count: 95 },
-      { keyword: '前端开发', count: 87 },
-      { keyword: 'Node.js', count: 76 },
-      { keyword: '性能优化', count: 64 },
-      { keyword: '响应式编程', count: 52 },
-      { keyword: '数据库', count: 48 },
-      { keyword: '编程思想', count: 41 }
+    const articles = await all(`
+      SELECT a.title, a.content, GROUP_CONCAT(t.name) as tags
+      FROM articles a
+      LEFT JOIN article_tags at ON a.id = at.article_id
+      LEFT JOIN tags t ON at.tag_id = t.id
+      GROUP BY a.id
+    `);
+    
+    const keywordCounts = {};
+    
+    const techKeywords = [
+      'JavaScript', 'React', 'Vue', 'Node.js', 'TypeScript', 'Python',
+      'Java', '前端', '后端', '全栈', '数据库', 'MySQL', 'MongoDB',
+      'Redis', 'Docker', 'Kubernetes', '微服务', 'API', 'REST',
+      'GraphQL', '性能优化', '响应式', '编程', '算法', '数据结构',
+      '设计模式', '测试', '敏捷开发', 'DevOps', 'CI/CD', 'Git',
+      'Linux', 'Nginx', 'Webpack', 'Vite', 'ES6', 'CSS', 'HTML',
+      '人工智能', '机器学习', '深度学习', '云计算', '大数据',
+      '安全', '网络', '操作系统', '计算机原理', '软件工程'
     ];
+    
+    articles.forEach(article => {
+      const content = `${article.title} ${article.content}`.toLowerCase();
+      const tags = article.tags ? article.tags.split(',') : [];
+      
+      tags.forEach(tag => {
+        const trimmedTag = tag.trim();
+        if (trimmedTag) {
+          keywordCounts[trimmedTag] = (keywordCounts[trimmedTag] || 0) + 3;
+        }
+      });
+      
+      techKeywords.forEach(keyword => {
+        if (content.includes(keyword.toLowerCase())) {
+          const count = keywordCounts[keyword] || 0;
+          if (count === 0) {
+            keywordCounts[keyword] = 1;
+          }
+        }
+      });
+    });
+    
+    const validKeywords = [];
+    for (const [keyword, count] of Object.entries(keywordCounts)) {
+      const likeKeyword = `%${keyword}%`;
+      const result = await get(`
+        SELECT COUNT(*) as cnt FROM articles 
+        WHERE title LIKE ? OR content LIKE ?
+      `, [likeKeyword, likeKeyword]);
+      
+      if (result && result.cnt > 0) {
+        validKeywords.push({
+          keyword,
+          count: count + result.cnt * 2
+        });
+      }
+    }
+    
+    validKeywords.sort((a, b) => b.count - a.count);
+    const hotKeywords = validKeywords.slice(0, 8);
+    
+    if (hotKeywords.length === 0) {
+      hotKeywords.push(
+        { keyword: '博客', count: articles.length },
+        { keyword: '技术', count: articles.length },
+        { keyword: '文章', count: articles.length }
+      );
+    }
     
     res.json(hotKeywords);
   } catch (error) {

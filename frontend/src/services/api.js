@@ -101,10 +101,10 @@ export async function getAllComments() {
   return request('/comments');
 }
 
-export async function searchArticles(keyword) {
+export async function searchArticles(keyword, options = {}) {
   const params = new URLSearchParams();
   params.append('q', keyword);
-  return request(`/articles/search?${params.toString()}`);
+  return request(`/articles/search?${params.toString()}`, options);
 }
 
 export async function getHotSearches() {

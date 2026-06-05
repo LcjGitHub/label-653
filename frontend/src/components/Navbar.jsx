@@ -1,20 +1,18 @@
-import { useState, useCallback } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { debounce } from '../utils/debounce';
+import { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleSearch = useCallback(
-    debounce((query) => {
-      if (query.trim()) {
-        navigate(`/search?q=${encodeURIComponent(query.trim())}`);
-      }
-    }, 300),
-    [navigate]
-  );
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q && location.pathname === '/search') {
+      setSearchQuery(q);
+    }
+  }, [searchParams, location.pathname]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -24,10 +22,13 @@ export default function Navbar() {
   };
 
   const handleInputChange = (e) => {
-    const value = e.target.value;
-    setSearchQuery(value);
-    if (value.trim().length >= 2) {
-      handleSearch(value);
+    setSearchQuery(e.target.value);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit(e);
     }
   };
 
@@ -54,10 +55,12 @@ export default function Navbar() {
           <form onSubmit={handleSubmit} className="search-form">
             <input
               type="text"
+              name="search"
               className="search-input"
               placeholder="搜索文章..."
               value={searchQuery}
               onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
             />
             <button type="submit" className="search-btn">
               搜索
