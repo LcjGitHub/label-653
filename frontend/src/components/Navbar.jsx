@@ -7,6 +7,9 @@ export default function Navbar() {
     if (path === '/') {
       return location.pathname === '/';
     }
+    if (path === '/create') {
+      return location.pathname.startsWith('/create') || location.pathname.startsWith('/edit');
+    }
     return location.pathname.startsWith(path);
   }
 

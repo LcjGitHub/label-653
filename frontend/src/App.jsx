@@ -24,7 +24,7 @@ function App() {
         </main>
         <footer className="footer">
           <div className="container">
-            <p>© {currentYear} 博客系统 - 基于 Express + React + SQLite 构建</p>
+            <p>© {currentYear} 博客系统 · 基于节点服务框架与界面库及嵌入式数据库构建</p>
           </div>
         </footer>
       </div>

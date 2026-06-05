@@ -13,6 +13,7 @@ export default function ArticleForm({ isEdit = false }) {
   });
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(isEdit);
+  const [fetchFailed, setFetchFailed] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function ArticleForm({ isEdit = false }) {
   async function fetchArticle() {
     try {
       setFetchLoading(true);
+      setFetchFailed(false);
       const data = await getArticle(id);
       setFormData({
         title: data.title,
@@ -38,6 +40,7 @@ export default function ArticleForm({ isEdit = false }) {
       });
     } catch (err) {
       setError(err.message || '加载文章失败');
+      setFetchFailed(true);
     } finally {
       setFetchLoading(false);
     }
@@ -86,6 +89,17 @@ export default function ArticleForm({ isEdit = false }) {
     return (
       <div className="container">
         <div className="loading">加载中...</div>
+      </div>
+    );
+  }
+
+  if (isEdit && fetchFailed) {
+    return (
+      <div className="container">
+        <div className="error" ref={errorRef}>
+          {error || '加载文章失败'}
+        </div>
+        <Link to="/" className="back-link">← 返回列表</Link>
       </div>
     );
   }
