@@ -1203,6 +1203,304 @@ a:hover {
   }
 }
 
+.nav-search {
+  flex: 1;
+  max-width: 400px;
+  margin: 0 24px;
+}
+
+.search-form {
+  display: flex;
+  gap: 8px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 8px 16px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  border: none;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-btn {
+  padding: 8px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.25);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.search-btn:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
+.search-highlight {
+  background-color: #fef08a;
+  color: var(--text-primary);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.search-results-page {
+  min-height: 400px;
+}
+
+.search-header {
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.search-title {
+  font-size: 1.8rem;
+  margin-bottom: 8px;
+}
+
+.search-count {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.search-count strong {
+  color: var(--primary-color);
+  font-size: 1.1rem;
+}
+
+.search-loading {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-muted);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.search-error {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--danger-color);
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.search-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.search-result-item {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s;
+}
+
+.search-result-item:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.search-result-header {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.match-score {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.search-result-title {
+  margin-bottom: 12px;
+}
+
+.search-result-title a {
+  color: var(--text-primary);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.search-result-title a:hover {
+  color: var(--primary-color);
+}
+
+.search-result-excerpt {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 16px;
+  font-size: 0.98rem;
+}
+
+.search-result-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.search-no-results,
+.search-empty {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.no-results-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.search-no-results h2,
+.search-empty h2 {
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-size: 1.5rem;
+}
+
+.search-no-results p,
+.search-empty p {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.hot-searches {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.hot-searches h3 {
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.hot-search-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.hot-search-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: white;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.hot-search-tag:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.hot-search-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.hot-search-tag:nth-child(1) .hot-search-rank {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.hot-search-tag:nth-child(2) .hot-search-rank {
+  background-color: #e5e7eb;
+  color: #4b5563;
+}
+
+.hot-search-tag:nth-child(3) .hot-search-rank {
+  background-color: #fed7aa;
+  color: #c2410c;
+}
+
+.hot-search-count {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 969px) {
+  .home-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    order: -1;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-search {
+    max-width: 250px;
+    margin: 0 12px;
+  }
+}
+
 @media (max-width: 768px) {
   .main-content {
     padding: 24px 0;
@@ -1214,6 +1512,22 @@ a:hover {
 
   .nav-container {
     padding: 0 16px;
+    flex-wrap: wrap;
+    height: auto;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    gap: 12px;
+  }
+
+  .nav-search {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .search-form {
+    width: 100%;
   }
 
   .nav-link {
@@ -1223,12 +1537,21 @@ a:hover {
 
   .article-card,
   .article-detail,
-  .form-container {
+  .form-container,
+  .search-result-item {
     padding: 20px;
   }
 
   .article-title {
     font-size: 1.5rem;
+  }
+
+  .search-title {
+    font-size: 1.4rem;
+  }
+
+  .search-result-title a {
+    font-size: 1.15rem;
   }
 
   .admin-header {
@@ -1276,5 +1599,10 @@ a:hover {
 
   .table-content {
     max-width: 150px;
+  }
+
+  .hot-search-tag {
+    padding: 6px 12px;
+    font-size: 0.85rem;
   }
 }

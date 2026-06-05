@@ -55,6 +55,53 @@ async function getArticlesWithDetails(whereClause = '', params = []) {
   return articles;
 }
 
+function highlightKeyword(text, keyword) {
+  if (!text || !keyword) return text;
+  
+  const regex = new RegExp(`(${escapeRegExp(keyword)})`, 'gi');
+  return text.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function generateExcerpt(content, keyword, maxLength = 150) {
+  if (!content) return '';
+  
+  const lowerContent = content.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase();
+  const keywordIndex = lowerContent.indexOf(lowerKeyword);
+  
+  if (keywordIndex === -1) {
+    return content.length > maxLength 
+      ? content.substring(0, maxLength) + '...' 
+      : content;
+  }
+  
+  const halfLength = Math.floor(maxLength / 2);
+  let start = Math.max(0, keywordIndex - halfLength);
+  let end = Math.min(content.length, keywordIndex + keyword.length + halfLength);
+  
+  if (start > 0 && start < 20) {
+    start = 0;
+  }
+  if (end < content.length && content.length - end < 20) {
+    end = content.length;
+  }
+  
+  let excerpt = content.substring(start, end);
+  
+  if (start > 0) {
+    excerpt = '...' + excerpt;
+  }
+  if (end < content.length) {
+    excerpt = excerpt + '...';
+  }
+  
+  return excerpt;
+}
+
 app.get('/api/categories', async (req, res) => {
   try {
     const categories = await all(`
@@ -110,6 +157,63 @@ app.get('/api/articles', async (req, res) => {
   } catch (error) {
     console.error('获取文章列表失败:', error);
     res.status(500).json({ error: '获取文章列表失败' });
+  }
+});
+
+app.get('/api/articles/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q || !q.trim()) {
+      return res.status(400).json({ error: '搜索关键词不能为空' });
+    }
+    
+    const keyword = q.trim();
+    const likeKeyword = `%${keyword}%`;
+    
+    const articles = await all(`
+      SELECT 
+        a.*, 
+        c.id as category_id, 
+        c.name as category_name,
+        (CASE 
+          WHEN a.title LIKE ? THEN 3
+          ELSE 0
+        END +
+        CASE 
+          WHEN a.content LIKE ? THEN 1
+          ELSE 0
+        END) as match_score
+      FROM articles a
+      LEFT JOIN categories c ON a.category_id = c.id
+      WHERE a.title LIKE ? OR a.content LIKE ?
+      ORDER BY match_score DESC, a.created_at DESC
+    `, [likeKeyword, likeKeyword, likeKeyword, likeKeyword]);
+    
+    for (const article of articles) {
+      const tags = await all(`
+        SELECT t.id, t.name
+        FROM tags t
+        INNER JOIN article_tags at ON t.id = at.tag_id
+        WHERE at.article_id = ?
+        ORDER BY t.name
+      `, [article.id]);
+      article.tags = tags;
+      
+      article.title_highlighted = highlightKeyword(article.title, keyword);
+      article.content_highlighted = highlightKeyword(article.content, keyword);
+      article.excerpt = generateExcerpt(article.content, keyword, 150);
+      article.excerpt_highlighted = highlightKeyword(article.excerpt, keyword);
+    }
+    
+    res.json({
+      keyword,
+      total: articles.length,
+      articles
+    });
+  } catch (error) {
+    console.error('搜索文章失败:', error);
+    res.status(500).json({ error: '搜索文章失败' });
   }
 });
 
@@ -365,6 +469,26 @@ app.delete('/api/comments/:id', async (req, res) => {
   }
 });
 
+app.get('/api/hot-searches', async (req, res) => {
+  try {
+    const hotKeywords = [
+      { keyword: 'JavaScript', count: 128 },
+      { keyword: 'React', count: 95 },
+      { keyword: '前端开发', count: 87 },
+      { keyword: 'Node.js', count: 76 },
+      { keyword: '性能优化', count: 64 },
+      { keyword: '响应式编程', count: 52 },
+      { keyword: '数据库', count: 48 },
+      { keyword: '编程思想', count: 41 }
+    ];
+    
+    res.json(hotKeywords);
+  } catch (error) {
+    console.error('获取热门搜索失败:', error);
+    res.status(500).json({ error: '获取热门搜索失败' });
+  }
+});
+
 app.get('/api/comments', async (req, res) => {
   try {
     const comments = await all(
@@ -388,6 +512,8 @@ initDatabase().then(() => {
     console.log(`  GET    /api/categories            - 获取所有分类`);
     console.log(`  GET    /api/tags                  - 获取所有标签`);
     console.log(`  GET    /api/articles              - 获取文章列表(支持?category=id或?tag=id筛选)`);
+    console.log(`  GET    /api/articles/search       - 搜索文章(支持?q=关键词)`);
+    console.log(`  GET    /api/hot-searches          - 获取热门搜索词`);
     console.log(`  GET    /api/articles/:id          - 获取单篇文章(含分类和标签)`);
     console.log(`  POST   /api/articles              - 创建文章(支持category_id和tags)`);
     console.log(`  PUT    /api/articles/:id          - 更新文章(支持category_id和tags)`);

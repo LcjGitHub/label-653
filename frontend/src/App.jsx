@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import ArticleDetail from './pages/ArticleDetail';
 import ArticleForm from './pages/ArticleForm';
 import Admin from './pages/Admin';
+import SearchResults from './pages/SearchResults';
 import './App.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/search" element={<SearchResults />} />
             <Route path="/article/:id" element={<ArticleDetail />} />
             <Route path="/create" element={<ArticleForm isEdit={false} />} />
             <Route path="/edit/:id" element={<ArticleForm isEdit={true} />} />

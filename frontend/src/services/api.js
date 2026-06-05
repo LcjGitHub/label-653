@@ -100,3 +100,13 @@ export async function deleteComment(id) {
 export async function getAllComments() {
   return request('/comments');
 }
+
+export async function searchArticles(keyword) {
+  const params = new URLSearchParams();
+  params.append('q', keyword);
+  return request(`/articles/search?${params.toString()}`);
+}
+
+export async function getHotSearches() {
+  return request('/hot-searches');
+}
