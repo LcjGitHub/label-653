@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getArticle, createArticle, updateArticle } from '../services/api';
 
 export default function ArticleForm({ isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const errorRef = useRef(null);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    author: 'Admin',
+    author: '管理员',
   });
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(isEdit);
@@ -20,6 +21,12 @@ export default function ArticleForm({ isEdit = false }) {
     }
   }, [isEdit, id]);
 
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [error]);
+
   async function fetchArticle() {
     try {
       setFetchLoading(true);
@@ -30,7 +37,7 @@ export default function ArticleForm({ isEdit = false }) {
         author: data.author,
       });
     } catch (err) {
-      setError('加载文章失败: ' + err.message);
+      setError(err.message || '加载文章失败');
     } finally {
       setFetchLoading(false);
     }
@@ -47,8 +54,13 @@ export default function ArticleForm({ isEdit = false }) {
   async function handleSubmit(e) {
     e.preventDefault();
     
-    if (!formData.title.trim() || !formData.content.trim()) {
-      setError('标题和内容不能为空');
+    if (!formData.title.trim()) {
+      setError('文章标题不能为空');
+      return;
+    }
+    
+    if (!formData.content.trim()) {
+      setError('文章内容不能为空');
       return;
     }
 
@@ -64,7 +76,7 @@ export default function ArticleForm({ isEdit = false }) {
       
       navigate('/');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || '保存失败');
     } finally {
       setLoading(false);
     }
@@ -86,7 +98,11 @@ export default function ArticleForm({ isEdit = false }) {
           <Link to="/" className="back-link">← 返回列表</Link>
         </div>
 
-        {error && <div className="error">{error}</div>}
+        {error && (
+          <div className="error" ref={errorRef}>
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="article-form">
           <div className="form-group">

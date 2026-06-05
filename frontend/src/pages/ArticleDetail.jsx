@@ -20,7 +20,7 @@ export default function ArticleDetail() {
       const data = await getArticle(id);
       setArticle(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || '加载文章失败');
     } finally {
       setLoading(false);
     }
@@ -31,7 +31,7 @@ export default function ArticleDetail() {
       await deleteArticle(id);
       navigate('/');
     } catch (err) {
-      setError('删除失败: ' + err.message);
+      setError('删除失败：' + (err.message || '未知错误'));
       setShowDeleteConfirm(false);
     }
   }
@@ -47,13 +47,13 @@ export default function ArticleDetail() {
   if (error) {
     return (
       <div className="container">
-        <div className="error">加载失败: {error}</div>
+        <div className="error">{error}</div>
         <Link to="/" className="back-link">← 返回列表</Link>
       </div>
     );
   }
 
-  if (!article) {
+  if (!article || !article.id) {
     return (
       <div className="container">
         <div className="error">文章不存在</div>

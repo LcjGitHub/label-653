@@ -167,6 +167,11 @@ a:hover {
   background-color: rgba(255, 255, 255, 0.3);
 }
 
+.nav-link.active {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: white !important;
+}
+
 .page-header {
   text-align: center;
   margin-bottom: 40px;

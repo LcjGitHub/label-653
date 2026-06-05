@@ -1,6 +1,15 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 export default function Navbar() {
+  const location = useLocation();
+
+  function isActive(path) {
+    if (path === '/') {
+      return location.pathname === '/';
+    }
+    return location.pathname.startsWith(path);
+  }
+
   return (
     <nav className="navbar">
       <div className="nav-container">
@@ -8,13 +17,22 @@ export default function Navbar() {
           博客系统
         </Link>
         <div className="nav-links">
-          <Link to="/" className="nav-link">
+          <Link
+            to="/"
+            className={`nav-link ${isActive('/') ? 'active' : ''}`}
+          >
             首页
           </Link>
-          <Link to="/admin" className="nav-link">
+          <Link
+            to="/admin"
+            className={`nav-link ${isActive('/admin') ? 'active' : ''}`}
+          >
             管理
           </Link>
-          <Link to="/create" className="nav-link nav-link-btn">
+          <Link
+            to="/create"
+            className={`nav-link nav-link-btn ${isActive('/create') ? 'active' : ''}`}
+          >
             写文章
           </Link>
         </div>

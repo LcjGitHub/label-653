@@ -17,7 +17,7 @@ export default function Home() {
       const data = await getArticles();
       setArticles(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || '加载文章列表失败');
     } finally {
       setLoading(false);
     }
@@ -34,7 +34,7 @@ export default function Home() {
   if (error) {
     return (
       <div className="container">
-        <div className="error">加载失败: {error}</div>
+        <div className="error">加载失败：{error}</div>
       </div>
     );
   }

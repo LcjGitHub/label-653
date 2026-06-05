@@ -7,6 +7,8 @@ import Admin from './pages/Admin';
 import './App.css';
 
 function App() {
+  const currentYear = new Date().getFullYear();
+
   return (
     <Router>
       <div className="app">
@@ -22,7 +24,7 @@ function App() {
         </main>
         <footer className="footer">
           <div className="container">
-            <p>© 2024 博客系统 - 基于 Express + React + SQLite 构建</p>
+            <p>© {currentYear} 博客系统 - 基于 Express + React + SQLite 构建</p>
           </div>
         </footer>
       </div>

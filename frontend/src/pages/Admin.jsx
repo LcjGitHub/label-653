@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getArticles, deleteArticle } from '../services/api';
 
 export default function Admin() {
   const navigate = useNavigate();
+  const errorRef = useRef(null);
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,13 +14,19 @@ export default function Admin() {
     fetchArticles();
   }, []);
 
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [error]);
+
   async function fetchArticles() {
     try {
       setLoading(true);
       const data = await getArticles();
       setArticles(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || '加载文章列表失败');
     } finally {
       setLoading(false);
     }
@@ -30,8 +37,9 @@ export default function Admin() {
       await deleteArticle(id);
       setArticles(prev => prev.filter(article => article.id !== id));
       setDeleteId(null);
+      setError(null);
     } catch (err) {
-      setError('删除失败: ' + err.message);
+      setError('删除失败：' + (err.message || '未知错误'));
       setDeleteId(null);
     }
   }
@@ -40,14 +48,6 @@ export default function Admin() {
     return (
       <div className="container">
         <div className="loading">加载中...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container">
-        <div className="error">加载失败: {error}</div>
       </div>
     );
   }
@@ -63,6 +63,12 @@ export default function Admin() {
           + 新建文章
         </Link>
       </div>
+
+      {error && (
+        <div className="error" ref={errorRef}>
+          {error}
+        </div>
+      )}
 
       <div className="admin-table-container">
         {articles.length === 0 ? (
