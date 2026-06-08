@@ -61,6 +61,9 @@ export async function getArticles(filters = {}) {
   const params = new URLSearchParams();
   if (filters.category) params.append('category', filters.category);
   if (filters.tag) params.append('tag', filters.tag);
+  if (filters.sort) params.append('sort', filters.sort);
+  if (filters.page) params.append('page', filters.page);
+  if (filters.pageSize) params.append('pageSize', filters.pageSize);
   
   const queryString = params.toString();
   return request(`/articles${queryString ? `?${queryString}` : ''}`);

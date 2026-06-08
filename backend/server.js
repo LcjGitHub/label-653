@@ -75,14 +75,59 @@ async function getArticleWithDetails(articleId) {
   };
 }
 
-async function getArticlesWithDetails(whereClause = '', params = []) {
-  const articles = await all(`
-    SELECT a.*, c.id as category_id, c.name as category_name
+const SORT_OPTIONS = {
+  'created_desc': 'a.created_at DESC',
+  'created_asc': 'a.created_at ASC',
+  'updated_desc': 'a.updated_at DESC',
+  'updated_asc': 'a.updated_at ASC',
+  'likes_desc': 'like_count DESC',
+  'likes_asc': 'like_count ASC'
+};
+
+async function getArticlesWithDetails(whereClause = '', params = [], sort = 'created_desc', page = 1, pageSize = 10) {
+  const orderBy = SORT_OPTIONS[sort] || SORT_OPTIONS['created_desc'];
+  const offset = (page - 1) * pageSize;
+
+  const countParams = [...params];
+  const countSql = `
+    SELECT COUNT(DISTINCT a.id) as total
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
     ${whereClause}
-    ORDER BY a.created_at DESC
-  `, params);
+  `;
+  const countResult = await get(countSql, countParams);
+  const total = countResult ? countResult.total : 0;
+
+  const needsLikeJoin = sort === 'likes_desc' || sort === 'likes_asc';
+  let dataSql;
+  if (needsLikeJoin) {
+    dataSql = `
+      SELECT a.*, c.id as category_id, c.name as category_name,
+             COALESCE(l.like_count, 0) as like_count
+      FROM articles a
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as like_count
+        FROM likes
+        GROUP BY article_id
+      ) l ON a.id = l.article_id
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `;
+  } else {
+    dataSql = `
+      SELECT a.*, c.id as category_id, c.name as category_name
+      FROM articles a
+      LEFT JOIN categories c ON a.category_id = c.id
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
+    `;
+  }
+
+  const dataParams = [...params, pageSize, offset];
+  const articles = await all(dataSql, dataParams);
 
   for (const article of articles) {
     const tags = await all(`
@@ -93,11 +138,19 @@ async function getArticlesWithDetails(whereClause = '', params = []) {
       ORDER BY t.name
     `, [article.id]);
     article.tags = tags;
-    article.like_count = await getArticleLikeCount(article.id);
+    if (!needsLikeJoin) {
+      article.like_count = await getArticleLikeCount(article.id);
+    }
     article.favorite_count = await getArticleFavoriteCount(article.id);
   }
 
-  return articles;
+  return {
+    articles,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize)
+  };
 }
 
 function highlightKeyword(text, keyword) {
@@ -206,7 +259,8 @@ app.get('/api/tags', async (req, res) => {
 
 app.get('/api/articles', async (req, res) => {
   try {
-    const { category, tag } = req.query;
+    const { category, tag, sort, page, pageSize } = req.query;
+
     let whereClause = '';
     let params = [];
 
@@ -222,8 +276,12 @@ app.get('/api/articles', async (req, res) => {
       params = [parseInt(tag)];
     }
 
-    const articles = await getArticlesWithDetails(whereClause, params);
-    res.json(articles);
+    const sortValue = sort || 'created_desc';
+    const pageValue = Math.max(1, parseInt(page) || 1);
+    const pageSizeValue = Math.min(100, Math.max(1, parseInt(pageSize) || 10));
+
+    const result = await getArticlesWithDetails(whereClause, params, sortValue, pageValue, pageSizeValue);
+    res.json(result);
   } catch (error) {
     console.error('获取文章列表失败:', error);
     res.status(500).json({ error: '获取文章列表失败' });

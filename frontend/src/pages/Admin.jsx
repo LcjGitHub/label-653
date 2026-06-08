@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getArticles, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
+import Pagination from '../components/Pagination';
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -16,6 +17,11 @@ export default function Admin() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
 
+  const [articlesPage, setArticlesPage] = useState(1);
+  const [articlesTotalPages, setArticlesTotalPages] = useState(1);
+  const [articlesTotal, setArticlesTotal] = useState(0);
+  const articlesPageSize = 10;
+
   useEffect(() => {
     if (activeTab === 'articles') {
       fetchArticles();
@@ -24,7 +30,7 @@ export default function Admin() {
     } else {
       fetchStats();
     }
-  }, [activeTab]);
+  }, [activeTab, articlesPage]);
 
   useEffect(() => {
     if (error && errorRef.current) {
@@ -36,8 +42,14 @@ export default function Admin() {
     try {
       setArticlesLoading(true);
       setError(null);
-      const data = await getArticles();
-      setArticles(data);
+      const result = await getArticles({
+        page: articlesPage,
+        pageSize: articlesPageSize,
+        sort: 'created_desc'
+      });
+      setArticles(result.articles || []);
+      setArticlesTotalPages(result.totalPages || 1);
+      setArticlesTotal(result.total || 0);
     } catch (err) {
       setError(err.message || '加载文章列表失败');
     } finally {
@@ -74,7 +86,11 @@ export default function Admin() {
   async function handleDeleteArticle(id) {
     try {
       await deleteArticle(id);
-      setArticles(prev => prev.filter(article => article.id !== id));
+      if (articles.length === 1 && articlesPage > 1) {
+        setArticlesPage(articlesPage - 1);
+      } else {
+        fetchArticles();
+      }
       setDeleteId(null);
       setDeleteType(null);
       setError(null);
@@ -102,6 +118,10 @@ export default function Admin() {
   function confirmDelete(id, type) {
     setDeleteId(id);
     setDeleteType(type);
+  }
+
+  function handleArticlesPageChange(page) {
+    setArticlesPage(page);
   }
 
   return (
@@ -160,67 +180,81 @@ export default function Admin() {
               );
             }
             return (
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>标题</th>
-                    <th>分类</th>
-                    <th>作者</th>
-                    <th>点赞数</th>
-                    <th>收藏数</th>
-                    <th>发布时间</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {articles.map(article => (
-                    <tr key={article.id}>
-                      <td>{article.id}</td>
-                      <td className="table-title">
-                        <Link to={`/article/${article.id}`}>{article.title}</Link>
-                      </td>
-                      <td>
-                        {article.category_name ? (
-                          <span className="badge badge-primary">
-                            {article.category_name}
-                          </span>
-                        ) : (
-                          <span className="text-muted">未分类</span>
-                        )}
-                      </td>
-                      <td>{article.author}</td>
-                      <td>
-                        <span className="badge badge-like">
-                          {article.like_count || 0}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="badge badge-favorite">
-                          {article.favorite_count || 0}
-                        </span>
-                      </td>
-                      <td>
-                        {new Date(article.created_at).toLocaleString('zh-CN')}
-                      </td>
-                      <td className="table-actions">
-                        <button
-                          className="btn-action btn-edit"
-                          onClick={() => navigate(`/edit/${article.id}`)}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          className="btn-action btn-delete"
-                          onClick={() => confirmDelete(article.id, 'article')}
-                        >
-                          删除
-                        </button>
-                      </td>
+              <>
+                <div className="list-toolbar admin-toolbar">
+                  <div className="list-info">
+                    <span>共 {articlesTotal} 篇文章</span>
+                  </div>
+                </div>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>标题</th>
+                      <th>分类</th>
+                      <th>作者</th>
+                      <th>点赞数</th>
+                      <th>收藏数</th>
+                      <th>发布时间</th>
+                      <th>操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {articles.map(article => (
+                      <tr key={article.id}>
+                        <td>{article.id}</td>
+                        <td className="table-title">
+                          <Link to={`/article/${article.id}`}>{article.title}</Link>
+                        </td>
+                        <td>
+                          {article.category_name ? (
+                            <span className="badge badge-primary">
+                              {article.category_name}
+                            </span>
+                          ) : (
+                            <span className="text-muted">未分类</span>
+                          )}
+                        </td>
+                        <td>{article.author}</td>
+                        <td>
+                          <span className="badge badge-like">
+                            {article.like_count || 0}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge badge-favorite">
+                            {article.favorite_count || 0}
+                          </span>
+                        </td>
+                        <td>
+                          {new Date(article.created_at).toLocaleString('zh-CN')}
+                        </td>
+                        <td className="table-actions">
+                          <button
+                            className="btn-action btn-edit"
+                            onClick={() => navigate(`/edit/${article.id}`)}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            className="btn-action btn-delete"
+                            onClick={() => confirmDelete(article.id, 'article')}
+                          >
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="pagination-wrapper admin-pagination">
+                  <Pagination
+                    currentPage={articlesPage}
+                    totalPages={articlesTotalPages}
+                    onPageChange={handleArticlesPageChange}
+                  />
+                </div>
+              </>
             );
           }
           

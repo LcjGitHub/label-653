@@ -3,9 +3,19 @@ import { useSearchParams } from 'react-router-dom';
 import { getArticles, getCategories, getTags } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
 import Sidebar from '../components/Sidebar';
+import Pagination from '../components/Pagination';
+
+const SORT_OPTIONS = [
+  { value: 'created_desc', label: '最新发布' },
+  { value: 'created_asc', label: '最早发布' },
+  { value: 'updated_desc', label: '最近更新' },
+  { value: 'updated_asc', label: '最早更新' },
+  { value: 'likes_desc', label: '点赞最多' },
+  { value: 'likes_asc', label: '点赞最少' }
+];
 
 export default function Home() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [articles, setArticles] = useState([]);
   const [categories, setCategories] = useState([]);
   const [tags, setTags] = useState([]);
@@ -16,6 +26,14 @@ export default function Home() {
 
   const categoryFilter = searchParams.get('category');
   const tagFilter = searchParams.get('tag');
+  const sortParam = searchParams.get('sort');
+  const pageParam = parseInt(searchParams.get('page')) || 1;
+
+  const [currentPage, setCurrentPage] = useState(pageParam);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalArticles, setTotalArticles] = useState(0);
+  const [sortBy, setSortBy] = useState(sortParam || 'created_desc');
+  const pageSize = 10;
 
   useEffect(() => {
     loadInitialData();
@@ -25,7 +43,14 @@ export default function Home() {
     if (sidebarReady) {
       loadArticles();
     }
-  }, [categoryFilter, tagFilter, sidebarReady]);
+  }, [categoryFilter, tagFilter, currentPage, sortBy, sidebarReady]);
+
+  useEffect(() => {
+    const page = parseInt(searchParams.get('page')) || 1;
+    const sort = searchParams.get('sort') || 'created_desc';
+    setCurrentPage(page);
+    setSortBy(sort);
+  }, [searchParams]);
 
   async function loadInitialData() {
     try {
@@ -53,15 +78,38 @@ export default function Home() {
       const filters = {};
       if (categoryFilter) filters.category = categoryFilter;
       if (tagFilter) filters.tag = tagFilter;
+      filters.sort = sortBy;
+      filters.page = currentPage;
+      filters.pageSize = pageSize;
       
-      const articlesData = await getArticles(filters);
-      setArticles(articlesData);
+      const result = await getArticles(filters);
+      setArticles(result.articles || []);
+      setTotalPages(result.totalPages || 1);
+      setTotalArticles(result.total || 0);
     } catch (err) {
       setError(err.message || '加载文章列表失败');
     } finally {
       setFilterLoading(false);
       setInitialLoading(false);
     }
+  }
+
+  function handlePageChange(page) {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('page', page.toString());
+    setSearchParams(newParams);
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleSortChange(e) {
+    const newSort = e.target.value;
+    setSortBy(newSort);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', newSort);
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+    setCurrentPage(1);
   }
 
   function getFilterTitle() {
@@ -122,25 +170,60 @@ export default function Home() {
               <>
                 <p className="page-subtitle">{getFilterSubtitle()}</p>
                 {(categoryFilter || tagFilter) && (
-                  <p className="filter-result">共找到 {articles.length} 篇文章</p>
+                  <p className="filter-result">共找到 {totalArticles} 篇文章</p>
                 )}
               </>
             )}
           </div>
+
+          <div className="list-toolbar">
+            <div className="list-info">
+              {!filterLoading && totalArticles > 0 && (
+                <span>共 {totalArticles} 篇文章</span>
+              )}
+            </div>
+            <div className="sort-wrapper">
+              <label htmlFor="sort-select" className="sort-label">排序：</label>
+              <select
+                id="sort-select"
+                className="sort-select"
+                value={sortBy}
+                onChange={handleSortChange}
+              >
+                {SORT_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {filterLoading ? (
             <div className="loading">加载中...</div>
           ) : (
-            <div className="articles-grid">
-              {articles.length === 0 ? (
-                <div className="empty-state">
-                  <p>暂无文章</p>
+            <>
+              <div className="articles-grid">
+                {articles.length === 0 ? (
+                  <div className="empty-state">
+                    <p>暂无文章</p>
+                  </div>
+                ) : (
+                  articles.map(article => (
+                    <ArticleCard key={article.id} article={article} />
+                  ))
+                )}
+              </div>
+              {articles.length > 0 && (
+                <div className="pagination-wrapper">
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                  />
                 </div>
-              ) : (
-                articles.map(article => (
-                  <ArticleCard key={article.id} article={article} />
-                ))
               )}
-            </div>
+            </>
           )}
         </main>
         {sidebarReady && <Sidebar categories={categories} tags={tags} />}
