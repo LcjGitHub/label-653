@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats, pinArticle } from '../services/api';
+import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats, pinArticle, exportArticlesBatch, downloadFromResponse } from '../services/api';
 import Pagination from '../components/Pagination';
 
 const SORT_OPTIONS = [
@@ -36,6 +36,11 @@ export default function Admin() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
   const [pinningIds, setPinningIds] = useState(new Set());
+  const [selectedArticleIds, setSelectedArticleIds] = useState(new Set());
+  const [selectedDraftIds, setSelectedDraftIds] = useState(new Set());
+  const [exporting, setExporting] = useState(false);
+  const [showBatchExportMenu, setShowBatchExportMenu] = useState(false);
+  const batchExportMenuRef = useRef(null);
 
   const [articlesPage, setArticlesPage] = useState(1);
   const [articlesTotalPages, setArticlesTotalPages] = useState(1);
@@ -68,6 +73,68 @@ export default function Admin() {
       errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [error]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (batchExportMenuRef.current && !batchExportMenuRef.current.contains(event.target)) {
+        setShowBatchExportMenu(false);
+      }
+    }
+    if (showBatchExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBatchExportMenu]);
+
+  function toggleSelectArticle(id, isDraft = false) {
+    const setSelected = isDraft ? setSelectedDraftIds : setSelectedArticleIds;
+    const selected = isDraft ? selectedDraftIds : selectedArticleIds;
+    const next = new Set(selected);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelected(next);
+  }
+
+  function toggleSelectAll(isDraft = false) {
+    const list = isDraft ? drafts : articles;
+    const setSelected = isDraft ? setSelectedDraftIds : setSelectedArticleIds;
+    const selected = isDraft ? selectedDraftIds : selectedArticleIds;
+    
+    if (selected.size === list.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(list.map(item => item.id)));
+    }
+  }
+
+  async function handleBatchExport(format, isDraft = false) {
+    try {
+      const selected = isDraft ? selectedDraftIds : selectedArticleIds;
+      if (selected.size === 0) {
+        setError('请先选择要导出的文章');
+        return;
+      }
+      setExporting(true);
+      setShowBatchExportMenu(false);
+      const ids = Array.from(selected);
+      const response = await exportArticlesBatch(ids, format);
+      await downloadFromResponse(response);
+      if (!isDraft) {
+        setSelectedArticleIds(new Set());
+      } else {
+        setSelectedDraftIds(new Set());
+      }
+    } catch (err) {
+      setError('批量导出失败：' + (err.message || '未知错误'));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function fetchArticles() {
     try {
@@ -310,26 +377,77 @@ export default function Admin() {
                         <div className="list-toolbar admin-toolbar">
                           <div className="list-info">
                             <span>共 {articlesTotal} 篇已发布文章</span>
+                            {selectedArticleIds.size > 0 && (
+                              <span className="selected-count">已选择 {selectedArticleIds.size} 篇</span>
+                            )}
                           </div>
-                          <div className="sort-wrapper">
-                            <label htmlFor="admin-sort-select" className="sort-label">排序：</label>
-                            <select
-                              id="admin-sort-select"
-                              className="sort-select"
-                              value={articlesSort}
-                              onChange={handleSortChange}
-                            >
-                              {SORT_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                          <div className="toolbar-actions">
+                            {selectedArticleIds.size > 0 && (
+                              <div className="batch-export-dropdown" ref={batchExportMenuRef}>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setShowBatchExportMenu(!showBatchExportMenu)}
+                                  disabled={exporting}
+                                >
+                                  {exporting ? '导出中...' : (
+                                    <>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '4px', verticalAlign: 'middle' }}>
+                                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/>
+                                      </svg>
+                                      批量导出
+                                    </>
+                                  )}
+                                </button>
+                                {showBatchExportMenu && (
+                                  <div className="export-menu">
+                                    <button
+                                      className="export-menu-item"
+                                      onClick={() => handleBatchExport('markdown', false)}
+                                      disabled={exporting}
+                                    >
+                                      <span>📝</span>
+                                      <span>导出为 Markdown</span>
+                                    </button>
+                                    <button
+                                      className="export-menu-item"
+                                      onClick={() => handleBatchExport('pdf', false)}
+                                      disabled={exporting}
+                                    >
+                                      <span>📄</span>
+                                      <span>导出为 PDF</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="sort-wrapper">
+                              <label htmlFor="admin-sort-select" className="sort-label">排序：</label>
+                              <select
+                                id="admin-sort-select"
+                                className="sort-select"
+                                value={articlesSort}
+                                onChange={handleSortChange}
+                              >
+                                {SORT_OPTIONS.map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </div>
                         <table className="admin-table">
                           <thead>
                             <tr>
+                              <th style={{ width: '40px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedArticleIds.size === articles.length && articles.length > 0}
+                                  onChange={() => toggleSelectAll(false)}
+                                  disabled={articles.length === 0}
+                                />
+                              </th>
                               <th>ID</th>
                               <th>标题</th>
                               <th>分类</th>
@@ -346,6 +464,13 @@ export default function Admin() {
                               const isPinned = article.is_pinned === 1 || article.is_pinned === true;
                               return (
                               <tr key={article.id}>
+                                <td>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedArticleIds.has(article.id)}
+                                    onChange={() => toggleSelectArticle(article.id, false)}
+                                  />
+                                </td>
                                 <td>{article.id}</td>
                                 <td className="table-title">
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -446,26 +571,92 @@ export default function Admin() {
                         <div className="list-toolbar admin-toolbar">
                           <div className="list-info">
                             <span>共 {draftsTotal} 篇草稿</span>
+                            {selectedDraftIds.size > 0 && (
+                              <span className="selected-count">已选择 {selectedDraftIds.size} 篇</span>
+                            )}
                           </div>
-                          <div className="sort-wrapper">
-                            <label htmlFor="draft-sort-select" className="sort-label">排序：</label>
-                            <select
-                              id="draft-sort-select"
-                              className="sort-select"
-                              value={draftsSort}
-                              onChange={handleDraftsSortChange}
-                            >
-                              {DRAFT_SORT_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                          <div className="toolbar-actions">
+                            {selectedDraftIds.size > 0 && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  if (selectedDraftIds.size > 0) {
+                                    setError('请先选择要导出的文章');
+                                    return;
+                                  }
+                                }}
+                                disabled={exporting}
+                                style={{ display: 'none' }}
+                              >
+                                占位
+                              </button>
+                            )}
+                            {selectedDraftIds.size > 0 && (
+                              <div className="batch-export-dropdown">
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setShowBatchExportMenu(!showBatchExportMenu)}
+                                  disabled={exporting}
+                                >
+                                  {exporting ? '导出中...' : (
+                                    <>
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '4px', verticalAlign: 'middle' }}>
+                                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/>
+                                      </svg>
+                                      批量导出
+                                    </>
+                                  )}
+                                </button>
+                                {showBatchExportMenu && (
+                                  <div className="export-menu">
+                                    <button
+                                      className="export-menu-item"
+                                      onClick={() => handleBatchExport('markdown', true)}
+                                      disabled={exporting}
+                                    >
+                                      <span>📝</span>
+                                      <span>导出为 Markdown</span>
+                                    </button>
+                                    <button
+                                      className="export-menu-item"
+                                      onClick={() => handleBatchExport('pdf', true)}
+                                      disabled={exporting}
+                                    >
+                                      <span>📄</span>
+                                      <span>导出为 PDF</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="sort-wrapper">
+                              <label htmlFor="draft-sort-select" className="sort-label">排序：</label>
+                              <select
+                                id="draft-sort-select"
+                                className="sort-select"
+                                value={draftsSort}
+                                onChange={handleDraftsSortChange}
+                              >
+                                {DRAFT_SORT_OPTIONS.map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </div>
                         <table className="admin-table">
                           <thead>
                             <tr>
+                              <th style={{ width: '40px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedDraftIds.size === drafts.length && drafts.length > 0}
+                                  onChange={() => toggleSelectAll(true)}
+                                  disabled={drafts.length === 0}
+                                />
+                              </th>
                               <th>ID</th>
                               <th>标题</th>
                               <th>分类</th>
@@ -480,6 +671,13 @@ export default function Admin() {
                               const isPinned = draft.is_pinned === 1 || draft.is_pinned === true;
                               return (
                               <tr key={draft.id}>
+                                <td>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDraftIds.has(draft.id)}
+                                    onChange={() => toggleSelectArticle(draft.id, true)}
+                                  />
+                                </td>
                                 <td>{draft.id}</td>
                                 <td className="table-title">
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

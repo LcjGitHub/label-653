@@ -1,5 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const TurndownService = require('turndown');
+const PDFDocument = require('pdfkit');
+const archiver = require('archiver');
 const { initDatabase, all, get, run } = require('./database');
 
 const app = express();
@@ -445,6 +448,219 @@ app.get('/api/articles/search', async (req, res) => {
   } catch (error) {
     console.error('搜索文章失败:', error);
     res.status(500).json({ error: '搜索文章失败' });
+  }
+});
+
+function htmlToMarkdown(html) {
+  const turndownService = new TurndownService({
+    headingStyle: 'atx',
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-'
+  });
+  return turndownService.turndown(html || '');
+}
+
+function articleToMarkdown(article) {
+  const tags = (article.tags || []).map(t => `#${t.name}`).join(' ');
+  const createdAt = new Date(article.created_at).toLocaleString('zh-CN');
+  const updatedAt = new Date(article.updated_at).toLocaleString('zh-CN');
+  
+  let md = `# ${article.title}\n\n`;
+  md += `> 作者: ${article.author}\n`;
+  md += `> 发布时间: ${createdAt}\n`;
+  if (article.updated_at !== article.created_at) {
+    md += `> 更新时间: ${updatedAt}\n`;
+  }
+  if (article.category_name) {
+    md += `> 分类: ${article.category_name}\n`;
+  }
+  if (tags) {
+    md += `> 标签: ${tags}\n`;
+  }
+  md += '\n---\n\n';
+  md += htmlToMarkdown(article.content);
+  return md;
+}
+
+function generatePdf(article, res) {
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: { top: 50, bottom: 50, left: 50, right: 50 }
+  });
+  
+  doc.pipe(res);
+  
+  doc.fontSize(24).text(article.title, { align: 'center' });
+  doc.moveDown();
+  
+  doc.fontSize(10).fillColor('#666666');
+  doc.text(`作者: ${article.author}`, { align: 'center' });
+  doc.text(`发布时间: ${new Date(article.created_at).toLocaleString('zh-CN')}`, { align: 'center' });
+  if (article.category_name) {
+    doc.text(`分类: ${article.category_name}`, { align: 'center' });
+  }
+  if (article.tags && article.tags.length > 0) {
+    doc.text(`标签: ${article.tags.map(t => t.name).join(', ')}`, { align: 'center' });
+  }
+  doc.moveDown();
+  
+  doc.strokeColor('#cccccc').lineWidth(1).moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+  doc.moveDown();
+  
+  doc.fillColor('#333333').fontSize(12);
+  const plainText = stripHtml(article.content);
+  doc.text(plainText, {
+    align: 'left',
+    lineGap: 5
+  });
+  
+  doc.end();
+}
+
+app.get('/api/articles/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { format = 'markdown' } = req.query;
+    
+    const article = await getArticleWithDetails(id);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const safeTitle = (article.title || 'article').replace(/[<>:"/\\|?*]/g, '_');
+    
+    if (format === 'pdf') {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.pdf"`);
+      generatePdf(article, res);
+    } else {
+      const markdown = articleToMarkdown(article);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.md"`);
+      res.send(markdown);
+    }
+  } catch (error) {
+    console.error('导出文章失败:', error);
+    res.status(500).json({ error: '导出文章失败' });
+  }
+});
+
+app.post('/api/articles/export/batch', async (req, res) => {
+  try {
+    const { ids, format = 'markdown' } = req.body;
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: '请选择要导出的文章' });
+    }
+    
+    const articles = [];
+    for (const id of ids) {
+      const article = await getArticleWithDetails(id);
+      if (article) {
+        articles.push(article);
+      }
+    }
+    
+    if (articles.length === 0) {
+      return res.status(404).json({ error: '没有找到可导出的文章' });
+    }
+    
+    if (articles.length === 1) {
+      const article = articles[0];
+      const safeTitle = (article.title || 'article').replace(/[<>:"/\\|?*]/g, '_');
+      
+      if (format === 'pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.pdf"`);
+        return generatePdf(article, res);
+      } else {
+        const markdown = articleToMarkdown(article);
+        res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.md"`);
+        return res.send(markdown);
+      }
+    }
+    
+    res.setHeader('Content-Type', 'application/zip');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    res.setHeader('Content-Disposition', `attachment; filename="articles_export_${timestamp}.zip"`);
+    
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+    
+    for (const article of articles) {
+      const safeTitle = (article.title || `article_${article.id}`).replace(/[<>:"/\\|?*]/g, '_');
+      
+      if (format === 'pdf') {
+        const chunks = [];
+        const stream = require('stream');
+        const doc = new PDFDocument({
+          size: 'A4',
+          margins: { top: 50, bottom: 50, left: 50, right: 50 }
+        });
+        
+        const bufferStream = new stream.PassThrough();
+        doc.pipe(bufferStream);
+        
+        doc.fontSize(24).text(article.title, { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(10).fillColor('#666666');
+        doc.text(`作者: ${article.author}`, { align: 'center' });
+        doc.text(`发布时间: ${new Date(article.created_at).toLocaleString('zh-CN')}`, { align: 'center' });
+        if (article.category_name) doc.text(`分类: ${article.category_name}`, { align: 'center' });
+        if (article.tags && article.tags.length > 0) {
+          doc.text(`标签: ${article.tags.map(t => t.name).join(', ')}`, { align: 'center' });
+        }
+        doc.moveDown();
+        doc.strokeColor('#cccccc').lineWidth(1).moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+        doc.moveDown();
+        doc.fillColor('#333333').fontSize(12);
+        doc.text(stripHtml(article.content), { align: 'left', lineGap: 5 });
+        doc.end();
+        
+        const pdfChunks = [];
+        await new Promise((resolve) => {
+          bufferStream.on('data', (chunk) => pdfChunks.push(chunk));
+          bufferStream.on('end', resolve);
+        });
+        const pdfBuffer = Buffer.concat(pdfChunks);
+        archive.append(pdfBuffer, { name: `${safeTitle}.pdf` });
+      } else {
+        const markdown = articleToMarkdown(article);
+        archive.append(markdown, { name: `${safeTitle}.md` });
+      }
+    }
+    
+    archive.finalize();
+  } catch (error) {
+    console.error('批量导出文章失败:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: '批量导出文章失败' });
+    }
+  }
+});
+
+app.get('/api/articles/:id/share', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const shareToken = Buffer.from(`article_${id}_${Date.now()}`).toString('base64').replace(/=/g, '');
+    
+    res.json({
+      share_url: `/article/${id}?share=${shareToken}`,
+      share_token: shareToken,
+      article_id: id,
+      title: article.title,
+      author: article.author
+    });
+  } catch (error) {
+    console.error('生成分享链接失败:', error);
+    res.status(500).json({ error: '生成分享链接失败' });
   }
 });
 
@@ -1087,6 +1303,9 @@ initDatabase().then(() => {
     console.log(`  GET    /api/articles/:id/likes        - 获取文章点赞状态`);
     console.log(`  GET    /api/articles/:id/favorites    - 获取文章收藏状态`);
     console.log(`  GET    /api/articles/stats            - 获取所有文章统计数据`);
+    console.log(`  GET    /api/articles/:id/export       - 导出文章(?format=markdown/pdf)`);
+    console.log(`  POST   /api/articles/export/batch     - 批量导出文章(ids:[], format:markdown/pdf)`);
+    console.log(`  GET    /api/articles/:id/share        - 生成文章分享链接`);
   });
 }).catch(error => {
   console.error('数据库初始化失败:', error);

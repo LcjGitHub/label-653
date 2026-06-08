@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getArticle, deleteArticle, getComments, createComment, getCategories, getTags } from '../services/api';
+import { getArticle, deleteArticle, getComments, createComment, exportArticle, getShareLink, downloadFromResponse } from '../services/api';
 import LikeButton from '../components/LikeButton';
 import FavoriteButton from '../components/FavoriteButton';
 import hljs from 'highlight.js';
@@ -11,8 +11,6 @@ export default function ArticleDetail() {
   const navigate = useNavigate();
   const articleBodyRef = useRef(null);
   const [article, setArticle] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -24,6 +22,13 @@ export default function ArticleDetail() {
   const [content, setContent] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareData, setShareData] = useState(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const exportMenuRef = useRef(null);
 
   useEffect(() => {
     fetchArticle();
@@ -39,17 +44,74 @@ export default function ArticleDetail() {
     }
   }, [article]);
 
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+        setShowExportMenu(false);
+      }
+    }
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showExportMenu]);
+
+  async function handleExport(format) {
+    try {
+      setExporting(true);
+      setShowExportMenu(false);
+      const response = await exportArticle(id, format);
+      await downloadFromResponse(response);
+    } catch (err) {
+      setError('导出失败：' + (err.message || '未知错误'));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleShare() {
+    try {
+      setShareLoading(true);
+      setShowShareModal(true);
+      const data = await getShareLink(id);
+      const fullUrl = window.location.origin + data.share_url;
+      setShareData({ ...data, full_url: fullUrl });
+    } catch (err) {
+      setError('生成分享链接失败：' + (err.message || '未知错误'));
+      setShowShareModal(false);
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch {
+        setError('复制失败，请手动复制');
+      }
+      document.body.removeChild(textarea);
+    }
+  }
+
   async function fetchArticle() {
     try {
       setLoading(true);
-      const [articleData, categoriesData, tagsData] = await Promise.all([
-        getArticle(id),
-        getCategories(),
-        getTags()
-      ]);
+      const articleData = await getArticle(id);
       setArticle(articleData);
-      setCategories(categoriesData);
-      setTags(tagsData);
     } catch (err) {
       setError(err.message || '加载文章失败');
     } finally {
@@ -231,15 +293,64 @@ export default function ArticleDetail() {
           </div>
 
           <div className="article-actions">
-            <Link to={`/edit/${article.id}`} className="btn btn-primary">
-              编辑文章
-            </Link>
-            <button
-              className="btn btn-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-            >
-              删除文章
-            </button>
+            <div className="action-buttons-group">
+              <div className="export-dropdown" ref={exportMenuRef}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={exporting}
+                >
+                  {exporting ? '导出中...' : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/>
+                      </svg>
+                      导出文章
+                    </>
+                  )}
+                </button>
+                {showExportMenu && (
+                  <div className="export-menu">
+                    <button
+                      className="export-menu-item"
+                      onClick={() => handleExport('markdown')}
+                      disabled={exporting}
+                    >
+                      <span>📝</span>
+                      <span>导出为 Markdown</span>
+                    </button>
+                    <button
+                      className="export-menu-item"
+                      onClick={() => handleExport('pdf')}
+                      disabled={exporting}
+                    >
+                      <span>📄</span>
+                      <span>导出为 PDF</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                className="btn btn-secondary"
+                onClick={handleShare}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '6px', verticalAlign: 'middle' }}>
+                  <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" fill="currentColor"/>
+                </svg>
+                分享文章
+              </button>
+            </div>
+            <div className="action-buttons-group">
+              <Link to={`/edit/${article.id}`} className="btn btn-primary">
+                编辑文章
+              </Link>
+              <button
+                className="btn btn-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                删除文章
+              </button>
+            </div>
           </div>
         </article>
 
@@ -260,6 +371,51 @@ export default function ArticleDetail() {
                   onClick={handleDelete}
                 >
                   确认删除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showShareModal && (
+          <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+            <div className="modal share-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>分享文章</h3>
+              {shareLoading ? (
+                <div className="loading" style={{ padding: '30px 0' }}>生成分享链接中...</div>
+              ) : shareData ? (
+                <>
+                  <div className="share-info">
+                    <p className="share-title">《{shareData.title}》</p>
+                    <p className="share-author">作者：{shareData.author}</p>
+                  </div>
+                  <div className="share-link-section">
+                    <label>分享链接：</label>
+                    <div className="share-link-input">
+                      <input
+                        type="text"
+                        value={shareData.full_url}
+                        readOnly
+                      />
+                      <button
+                        className={`btn ${copySuccess ? 'btn-success' : 'btn-primary'}`}
+                        onClick={() => copyToClipboard(shareData.full_url)}
+                      >
+                        {copySuccess ? '已复制!' : '复制链接'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="share-tips">
+                    <p>💡 提示：将链接分享给朋友后，他们可以直接点击访问此文章。</p>
+                  </div>
+                </>
+              ) : null}
+              <div className="modal-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => { setShowShareModal(false); setShareData(null); setCopySuccess(false); }}
+                >
+                  关闭
                 </button>
               </div>
             </div>

@@ -190,3 +190,57 @@ export async function pinArticle(articleId, pinned) {
     body: JSON.stringify({ pinned }),
   });
 }
+
+export async function exportArticle(articleId, format = 'markdown') {
+  const userId = getOrCreateUserId();
+  const response = await fetch(`${API_BASE}/articles/${articleId}/export?format=${format}`, {
+    headers: { 'x-user-id': userId }
+  });
+  if (!response.ok) {
+    await handleError(response);
+  }
+  return response;
+}
+
+export async function exportArticlesBatch(ids, format = 'markdown') {
+  const userId = getOrCreateUserId();
+  const response = await fetch(`${API_BASE}/articles/export/batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId
+    },
+    body: JSON.stringify({ ids, format })
+  });
+  if (!response.ok) {
+    await handleError(response);
+  }
+  return response;
+}
+
+export async function getShareLink(articleId) {
+  return request(`/articles/${articleId}/share`);
+}
+
+export function downloadFromResponse(response, filename) {
+  return response.blob().then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) {
+      a.download = filename;
+    } else {
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          a.download = decodeURIComponent(match[1]);
+        }
+      }
+    }
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  });
+}
