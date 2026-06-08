@@ -29,6 +29,19 @@ function getClientIp(req) {
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
 
+function parseTags(tagIdsStr, tagNamesStr) {
+  if (!tagIdsStr || !tagNamesStr) return [];
+  const ids = tagIdsStr.split(',');
+  const names = tagNamesStr.split(',');
+  const tags = [];
+  for (let i = 0; i < ids.length && i < names.length; i++) {
+    if (ids[i] && names[i]) {
+      tags.push({ id: parseInt(ids[i]), name: names[i] });
+    }
+  }
+  return tags;
+}
+
 async function getArticleLikeCount(articleId) {
   const result = await get('SELECT COUNT(*) as count FROM likes WHERE article_id = ?', [parseInt(articleId)]);
   return result ? result.count : 0;
@@ -51,30 +64,38 @@ async function hasUserFavorited(articleId, userIdentifier) {
 
 async function getArticleWithDetails(articleId) {
   const article = await get(`
-    SELECT a.*, c.id as category_id, c.name as category_name
+    SELECT 
+      a.*, 
+      c.id as category_id, 
+      c.name as category_name,
+      COALESCE(l.like_count, 0) as like_count,
+      COALESCE(f.favorite_count, 0) as favorite_count,
+      (SELECT GROUP_CONCAT(t.id) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_ids,
+      (SELECT GROUP_CONCAT(t.name) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_names
     FROM articles a
     LEFT JOIN categories c ON a.category_id = c.id
+    LEFT JOIN (
+      SELECT article_id, COUNT(*) as like_count 
+      FROM likes 
+      GROUP BY article_id
+    ) l ON a.id = l.article_id
+    LEFT JOIN (
+      SELECT article_id, COUNT(*) as favorite_count 
+      FROM favorites 
+      GROUP BY article_id
+    ) f ON a.id = f.article_id
     WHERE a.id = ?
   `, [parseInt(articleId)]);
 
   if (!article) return null;
 
-  const tags = await all(`
-    SELECT t.id, t.name
-    FROM tags t
-    INNER JOIN article_tags at ON t.id = at.tag_id
-    WHERE at.article_id = ?
-    ORDER BY t.name
-  `, [parseInt(articleId)]);
-
-  const likeCount = await getArticleLikeCount(articleId);
-  const favoriteCount = await getArticleFavoriteCount(articleId);
+  const tags = parseTags(article.tag_ids, article.tag_names);
+  delete article.tag_ids;
+  delete article.tag_names;
 
   return {
     ...article,
-    tags: tags,
-    like_count: likeCount,
-    favorite_count: favoriteCount
+    tags: tags
   };
 }
 
@@ -103,50 +124,39 @@ async function getArticlesWithDetails(whereClause = '', params = [], sort = 'cre
   const validatedPage = Math.min(Math.max(1, page), totalPages);
   const offset = (validatedPage - 1) * pageSize;
 
-  const needsLikeJoin = sort === 'likes_desc' || sort === 'likes_asc';
-  let dataSql;
-  if (needsLikeJoin) {
-    dataSql = `
-      SELECT a.*, c.id as category_id, c.name as category_name,
-             COALESCE(l.like_count, 0) as like_count
-      FROM articles a
-      LEFT JOIN categories c ON a.category_id = c.id
-      LEFT JOIN (
-        SELECT article_id, COUNT(*) as like_count
-        FROM likes
-        GROUP BY article_id
-      ) l ON a.id = l.article_id
-      ${whereClause}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `;
-  } else {
-    dataSql = `
-      SELECT a.*, c.id as category_id, c.name as category_name
-      FROM articles a
-      LEFT JOIN categories c ON a.category_id = c.id
-      ${whereClause}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `;
-  }
+  const dataSql = `
+    SELECT 
+      a.*, 
+      c.id as category_id, 
+      c.name as category_name,
+      COALESCE(l.like_count, 0) as like_count,
+      COALESCE(f.favorite_count, 0) as favorite_count,
+      (SELECT GROUP_CONCAT(t.id) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_ids,
+      (SELECT GROUP_CONCAT(t.name) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_names
+    FROM articles a
+    LEFT JOIN categories c ON a.category_id = c.id
+    LEFT JOIN (
+      SELECT article_id, COUNT(*) as like_count 
+      FROM likes 
+      GROUP BY article_id
+    ) l ON a.id = l.article_id
+    LEFT JOIN (
+      SELECT article_id, COUNT(*) as favorite_count 
+      FROM favorites 
+      GROUP BY article_id
+    ) f ON a.id = f.article_id
+    ${whereClause}
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `;
 
   const dataParams = [...params, pageSize, offset];
   const articles = await all(dataSql, dataParams);
 
   for (const article of articles) {
-    const tags = await all(`
-      SELECT t.id, t.name
-      FROM tags t
-      INNER JOIN article_tags at ON t.id = at.tag_id
-      WHERE at.article_id = ?
-      ORDER BY t.name
-    `, [article.id]);
-    article.tags = tags;
-    if (!needsLikeJoin) {
-      article.like_count = await getArticleLikeCount(article.id);
-    }
-    article.favorite_count = await getArticleFavoriteCount(article.id);
+    article.tags = parseTags(article.tag_ids, article.tag_names);
+    delete article.tag_ids;
+    delete article.tag_names;
   }
 
   return {
@@ -405,6 +415,10 @@ app.get('/api/articles/search', async (req, res) => {
         a.*, 
         c.id as category_id, 
         c.name as category_name,
+        COALESCE(l.like_count, 0) as like_count,
+        COALESCE(f.favorite_count, 0) as favorite_count,
+        (SELECT GROUP_CONCAT(t.id) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_ids,
+        (SELECT GROUP_CONCAT(t.name) FROM tags t INNER JOIN article_tags at ON t.id = at.tag_id WHERE at.article_id = a.id ORDER BY t.name) as tag_names,
         (CASE 
           WHEN a.title LIKE ? THEN 3
           ELSE 0
@@ -415,20 +429,25 @@ app.get('/api/articles/search', async (req, res) => {
         END) as match_score
       FROM articles a
       LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as like_count 
+        FROM likes 
+        GROUP BY article_id
+      ) l ON a.id = l.article_id
+      LEFT JOIN (
+        SELECT article_id, COUNT(*) as favorite_count 
+        FROM favorites 
+        GROUP BY article_id
+      ) f ON a.id = f.article_id
       WHERE a.status = ? AND (a.title LIKE ? OR a.content LIKE ?)
       ORDER BY a.is_pinned DESC, a.pinned_at DESC, match_score DESC, a.created_at DESC
       LIMIT ? OFFSET ?
     `, [likeKeyword, likeKeyword, 'published', likeKeyword, likeKeyword, pageSizeValue, offset]);
     
     for (const article of articles) {
-      const tags = await all(`
-        SELECT t.id, t.name
-        FROM tags t
-        INNER JOIN article_tags at ON t.id = at.tag_id
-        WHERE at.article_id = ?
-        ORDER BY t.name
-      `, [article.id]);
-      article.tags = tags;
+      article.tags = parseTags(article.tag_ids, article.tag_names);
+      delete article.tag_ids;
+      delete article.tag_names;
       
       const plainContent = stripHtml(article.content);
       article.title_highlighted = highlightKeyword(article.title, keyword);

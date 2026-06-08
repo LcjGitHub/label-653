@@ -125,6 +125,16 @@ function initDatabase() {
                       return;
                     }
 
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_articles_status_created ON articles(status, created_at DESC)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_articles_pinned ON articles(is_pinned DESC, pinned_at DESC)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_likes_article ON likes(article_id)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_identifier, article_id)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_article ON favorites(article_id)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_identifier, article_id)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_comments_article ON comments(article_id, created_at DESC)`);
+                    db.run(`CREATE INDEX IF NOT EXISTS idx_article_tags_tag ON article_tags(tag_id, article_id)`);
+
                 db.get('SELECT COUNT(*) as count FROM categories', [], (err, row) => {
                   if (err) {
                     reject(err);
