@@ -1,7 +1,7 @@
 const sqlite3 = require('@louislam/sqlite3').verbose();
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'blog.db');
+const DB_FILE = process.env.DB_PATH || path.join(__dirname, 'blog.db');
 let db;
 
 function initDatabase() {

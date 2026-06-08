@@ -1405,37 +1405,45 @@ app.get('/api/comments', async (req, res) => {
   }
 });
 
-initDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`服务器运行在 http://localhost:${PORT}`);
-    console.log(`API 接口:`);
-    console.log(`  GET    /api/categories                - 获取所有分类`);
-    console.log(`  GET    /api/tags                      - 获取所有标签`);
-    console.log(`  GET    /api/articles                  - 获取已发布文章列表(支持?category=id或?tag=id筛选)`);
-    console.log(`  GET    /api/articles/drafts/list      - 获取草稿列表`);
-    console.log(`  GET    /api/articles/search           - 搜索文章(支持?q=关键词)`);
-    console.log(`  GET    /api/hot-searches              - 获取热门搜索词`);
-    console.log(`  GET    /api/articles/:id              - 获取单篇文章(含分类和标签)`);
-    console.log(`  POST   /api/articles                  - 创建文章(支持status:draft/published, category_id和tags)`);
-    console.log(`  PUT    /api/articles/:id              - 更新文章(支持status, category_id和tags)`);
-    console.log(`  DELETE /api/articles/:id              - 删除文章`);
-    console.log(`  PUT    /api/articles/:id/pin          - 切换文章置顶状态`);
-    console.log(`  GET    /api/articles/:id/comments     - 获取文章评论列表`);
-    console.log(`  POST   /api/articles/:id/comments     - 添加评论`);
-    console.log(`  DELETE /api/comments/:id              - 删除评论`);
-    console.log(`  GET    /api/comments                  - 获取所有评论(管理)`);
-    console.log(`  POST   /api/articles/:id/like         - 点赞文章`);
-    console.log(`  DELETE /api/articles/:id/like         - 取消点赞`);
-    console.log(`  POST   /api/articles/:id/favorite     - 收藏文章`);
-    console.log(`  DELETE /api/articles/:id/favorite     - 取消收藏`);
-    console.log(`  GET    /api/articles/:id/likes        - 获取文章点赞状态`);
-    console.log(`  GET    /api/articles/:id/favorites    - 获取文章收藏状态`);
-    console.log(`  GET    /api/articles/stats            - 获取所有文章统计数据`);
-    console.log(`  GET    /api/articles/:id/export       - 导出文章(?format=markdown/pdf)`);
-    console.log(`  POST   /api/articles/export/batch     - 批量导出文章(ids:[], format:markdown/pdf)`);
-    console.log(`  GET    /api/articles/:id/share        - 生成文章分享链接`);
-  });
+const serverPromise = initDatabase().then(() => {
+  if (require.main === module) {
+    app.listen(PORT, () => {
+      console.log(`服务器运行在 http://localhost:${PORT}`);
+      console.log(`API 接口:`);
+      console.log(`  GET    /api/categories                - 获取所有分类`);
+      console.log(`  GET    /api/tags                      - 获取所有标签`);
+      console.log(`  GET    /api/articles                  - 获取已发布文章列表(支持?category=id或?tag=id筛选)`);
+      console.log(`  GET    /api/articles/drafts/list      - 获取草稿列表`);
+      console.log(`  GET    /api/articles/search           - 搜索文章(支持?q=关键词)`);
+      console.log(`  GET    /api/hot-searches              - 获取热门搜索词`);
+      console.log(`  GET    /api/articles/:id              - 获取单篇文章(含分类和标签)`);
+      console.log(`  POST   /api/articles                  - 创建文章(支持status:draft/published, category_id和tags)`);
+      console.log(`  PUT    /api/articles/:id              - 更新文章(支持status, category_id和tags)`);
+      console.log(`  DELETE /api/articles/:id              - 删除文章`);
+      console.log(`  PUT    /api/articles/:id/pin          - 切换文章置顶状态`);
+      console.log(`  GET    /api/articles/:id/comments     - 获取文章评论列表`);
+      console.log(`  POST   /api/articles/:id/comments     - 添加评论`);
+      console.log(`  DELETE /api/comments/:id              - 删除评论`);
+      console.log(`  GET    /api/comments                  - 获取所有评论(管理)`);
+      console.log(`  POST   /api/articles/:id/like         - 点赞文章`);
+      console.log(`  DELETE /api/articles/:id/like         - 取消点赞`);
+      console.log(`  POST   /api/articles/:id/favorite     - 收藏文章`);
+      console.log(`  DELETE /api/articles/:id/favorite     - 取消收藏`);
+      console.log(`  GET    /api/articles/:id/likes        - 获取文章点赞状态`);
+      console.log(`  GET    /api/articles/:id/favorites    - 获取文章收藏状态`);
+      console.log(`  GET    /api/articles/stats            - 获取所有文章统计数据`);
+      console.log(`  GET    /api/articles/:id/export       - 导出文章(?format=markdown/pdf)`);
+      console.log(`  POST   /api/articles/export/batch     - 批量导出文章(ids:[], format:markdown/pdf)`);
+      console.log(`  GET    /api/articles/:id/share        - 生成文章分享链接`);
+    });
+  }
+  return app;
 }).catch(error => {
   console.error('数据库初始化失败:', error);
-  process.exit(1);
+  if (require.main === module) {
+    process.exit(1);
+  }
+  throw error;
 });
+
+module.exports = { app, serverPromise };
