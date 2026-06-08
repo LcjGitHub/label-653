@@ -35,6 +35,7 @@ export default function Admin() {
   const [error, setError] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
+  const [pinningIds, setPinningIds] = useState(new Set());
 
   const [articlesPage, setArticlesPage] = useState(1);
   const [articlesTotalPages, setArticlesTotalPages] = useState(1);
@@ -189,7 +190,11 @@ export default function Admin() {
   }
 
   async function handleTogglePin(articleId, currentPinned) {
+    if (pinningIds.has(articleId)) {
+      return;
+    }
     try {
+      setPinningIds(prev => new Set(prev).add(articleId));
       const newPinned = !currentPinned;
       await pinArticle(articleId, newPinned);
       if (articleSubTab === 'published') {
@@ -199,6 +204,12 @@ export default function Admin() {
       }
     } catch (err) {
       setError('切换置顶状态失败：' + (err.message || '未知错误'));
+    } finally {
+      setPinningIds(prev => {
+        const next = new Set(prev);
+        next.delete(articleId);
+        return next;
+      });
     }
   }
 
@@ -376,11 +387,19 @@ export default function Admin() {
                                     className={`btn-pin ${isPinned ? 'active' : ''}`}
                                     onClick={() => handleTogglePin(article.id, isPinned)}
                                     title={isPinned ? '取消置顶' : '置顶'}
+                                    disabled={pinningIds.has(article.id)}
                                   >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
-                                    </svg>
-                                    <span>{isPinned ? '取消' : '置顶'}</span>
+                                    {pinningIds.has(article.id) ? (
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ animation: 'spin 1s linear infinite' }}>
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" fill="currentColor" opacity="0.3"/>
+                                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z" fill="currentColor"/>
+                                      </svg>
+                                    ) : (
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                                      </svg>
+                                    )}
+                                    <span>{pinningIds.has(article.id) ? '处理中...' : (isPinned ? '取消' : '置顶')}</span>
                                   </button>
                                 </td>
                                 <td className="table-actions">
@@ -452,16 +471,28 @@ export default function Admin() {
                               <th>分类</th>
                               <th>作者</th>
                               <th>更新时间</th>
+                              <th>置顶</th>
                               <th>操作</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {drafts.map(draft => (
+                            {drafts.map(draft => {
+                              const isPinned = draft.is_pinned === 1 || draft.is_pinned === true;
+                              return (
                               <tr key={draft.id}>
                                 <td>{draft.id}</td>
                                 <td className="table-title">
-                                  {draft.title}
-                                  <span className="badge badge-secondary" style={{ marginLeft: '8px' }}>草稿</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {isPinned && (
+                                      <span className="pin-icon" title="已置顶">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                                        </svg>
+                                      </span>
+                                    )}
+                                    {draft.title}
+                                    <span className="badge badge-secondary" style={{ marginLeft: '8px' }}>草稿</span>
+                                  </div>
                                 </td>
                                 <td>
                                   {draft.category_name ? (
@@ -475,6 +506,26 @@ export default function Admin() {
                                 <td>{draft.author}</td>
                                 <td>
                                   {new Date(draft.updated_at).toLocaleString('zh-CN')}
+                                </td>
+                                <td>
+                                  <button
+                                    className={`btn-pin ${isPinned ? 'active' : ''}`}
+                                    onClick={() => handleTogglePin(draft.id, isPinned)}
+                                    title={isPinned ? '取消置顶' : '置顶'}
+                                    disabled={pinningIds.has(draft.id)}
+                                  >
+                                    {pinningIds.has(draft.id) ? (
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ animation: 'spin 1s linear infinite' }}>
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" fill="currentColor" opacity="0.3"/>
+                                        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8z" fill="currentColor"/>
+                                      </svg>
+                                    ) : (
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                                      </svg>
+                                    )}
+                                    <span>{pinningIds.has(draft.id) ? '处理中...' : (isPinned ? '取消' : '置顶')}</span>
+                                  </button>
                                 </td>
                                 <td className="table-actions">
                                   <button
@@ -491,7 +542,7 @@ export default function Admin() {
                                   </button>
                                 </td>
                               </tr>
-                            ))}
+                            ); })}
                           </tbody>
                         </table>
                         <div className="pagination-wrapper admin-pagination">

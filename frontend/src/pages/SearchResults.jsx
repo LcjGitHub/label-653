@@ -121,17 +121,7 @@ export default function SearchResults() {
                     return (
                     <div key={article.id} className={`search-result-item ${isPinned ? 'article-card-pinned' : ''}`}>
                       <div className="search-result-header">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          {isPinned && (
-                            <span className="pin-badge">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle', marginRight: '4px' }}>
-                                <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
-                              </svg>
-                              置顶
-                            </span>
-                          )}
-                          <span className="article-author">{article.author}</span>
-                        </div>
+                        <span className="article-author">{article.author}</span>
                         <span className="article-date">
                           {new Date(article.created_at).toLocaleDateString('zh-CN')}
                         </span>
@@ -141,9 +131,19 @@ export default function SearchResults() {
                       </div>
                       
                       <h2 className="search-result-title">
-                        <Link to={`/article/${article.id}`}>
-                          {renderHighlighted(article.title_highlighted)}
-                        </Link>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {isPinned && (
+                            <span className="pin-badge">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle', marginRight: '4px' }}>
+                                <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                              </svg>
+                              置顶
+                            </span>
+                          )}
+                          <Link to={`/article/${article.id}`}>
+                            {renderHighlighted(article.title_highlighted)}
+                          </Link>
+                        </div>
                       </h2>
 
                       {(article.category_name || (article.tags && article.tags.length > 0)) && (

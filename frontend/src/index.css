@@ -1579,6 +1579,20 @@ a:hover {
   border-color: #d97706;
 }
 
+.btn-pin:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 969px) {
   .home-layout {
     grid-template-columns: 1fr;

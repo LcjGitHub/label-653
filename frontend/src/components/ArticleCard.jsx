@@ -40,7 +40,13 @@ export default function ArticleCard({ article }) {
   return (
     <div className={`article-card ${isPinned ? 'article-card-pinned' : ''}`}>
       <div className="article-card-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <span className="article-author">{article.author}</span>
+        <span className="article-date">
+          {new Date(article.created_at).toLocaleDateString('zh-CN')}
+        </span>
+      </div>
+      <h2 className="article-card-title">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {isPinned && (
             <span className="pin-badge">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle', marginRight: '4px' }}>
@@ -49,14 +55,8 @@ export default function ArticleCard({ article }) {
               置顶
             </span>
           )}
-          <span className="article-author">{article.author}</span>
+          <Link to={`/article/${article.id}`}>{article.title}</Link>
         </div>
-        <span className="article-date">
-          {new Date(article.created_at).toLocaleDateString('zh-CN')}
-        </span>
-      </div>
-      <h2 className="article-card-title">
-        <Link to={`/article/${article.id}`}>{article.title}</Link>
       </h2>
       
       {(article.category_name || (article.tags && article.tags.length > 0)) && (
