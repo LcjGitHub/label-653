@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getArticle, createArticle, updateArticle, getCategories, getTags } from '../services/api';
+import RichTextEditor from '../components/RichTextEditor';
+
+function stripHtml(html) {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
 
 export default function ArticleForm({ isEdit = false }) {
   const { id } = useParams();
@@ -69,6 +77,13 @@ export default function ArticleForm({ isEdit = false }) {
     setFormData(prev => ({
       ...prev,
       [name]: value,
+    }));
+  }
+
+  function handleContentChange(value) {
+    setFormData(prev => ({
+      ...prev,
+      content: value,
     }));
   }
 
@@ -152,7 +167,8 @@ export default function ArticleForm({ isEdit = false }) {
       return;
     }
     
-    if (!formData.content.trim()) {
+    const plainContent = stripHtml(formData.content);
+    if (!plainContent.trim()) {
       setError('文章内容不能为空');
       return;
     }
@@ -317,15 +333,11 @@ export default function ArticleForm({ isEdit = false }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="content">文章内容</label>
-            <textarea
-              id="content"
-              name="content"
+            <label>文章内容</label>
+            <RichTextEditor
               value={formData.content}
-              onChange={handleChange}
+              onChange={handleContentChange}
               placeholder="请输入文章内容..."
-              className="form-textarea"
-              rows="15"
             />
           </div>
 

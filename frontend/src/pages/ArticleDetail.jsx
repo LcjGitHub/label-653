@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getArticle, deleteArticle, getComments, createComment, getCategories, getTags } from '../services/api';
 import LikeButton from '../components/LikeButton';
 import FavoriteButton from '../components/FavoriteButton';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github.css';
 
 export default function ArticleDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const articleBodyRef = useRef(null);
   const [article, setArticle] = useState(null);
   const [categories, setCategories] = useState([]);
   const [tags, setTags] = useState([]);
@@ -26,6 +29,15 @@ export default function ArticleDetail() {
     fetchArticle();
     fetchComments();
   }, [id]);
+
+  useEffect(() => {
+    if (article && articleBodyRef.current) {
+      const codeBlocks = articleBodyRef.current.querySelectorAll('pre code');
+      codeBlocks.forEach((block) => {
+        hljs.highlightElement(block);
+      });
+    }
+  }, [article]);
 
   async function fetchArticle() {
     try {
@@ -197,11 +209,11 @@ export default function ArticleDetail() {
             )}
           </header>
           
-          <div className="article-body">
-            {article.content.split('\n').map((paragraph, index) => (
-              <p key={index}>{paragraph}</p>
-            ))}
-          </div>
+          <div 
+            className="article-body" 
+            ref={articleBodyRef}
+            dangerouslySetInnerHTML={{ __html: article.content }}
+          />
           
           <div className="article-interactions">
             <div className="interaction-buttons">

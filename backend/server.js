@@ -155,6 +155,20 @@ async function getArticlesWithDetails(whereClause = '', params = [], sort = 'cre
   };
 }
 
+function stripHtml(html) {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function highlightKeyword(text, keyword) {
   if (!text || !keyword) return text;
   
@@ -167,35 +181,36 @@ function escapeRegExp(string) {
 }
 
 function extractKeywordFragment(text, keyword, maxLength = 150) {
-  if (!text) return '';
+  const plainText = stripHtml(text);
+  if (!plainText) return '';
   
-  const lowerText = text.toLowerCase();
+  const lowerText = plainText.toLowerCase();
   const lowerKeyword = keyword.toLowerCase();
   const keywordIndex = lowerText.indexOf(lowerKeyword);
   
   if (keywordIndex === -1) {
-    return text.length > maxLength 
-      ? text.substring(0, maxLength) + '...' 
-      : text;
+    return plainText.length > maxLength 
+      ? plainText.substring(0, maxLength) + '...' 
+      : plainText;
   }
   
   const halfLength = Math.floor(maxLength / 2);
   let start = Math.max(0, keywordIndex - halfLength);
-  let end = Math.min(text.length, keywordIndex + keyword.length + halfLength);
+  let end = Math.min(plainText.length, keywordIndex + keyword.length + halfLength);
   
   if (start > 0 && start < 20) {
     start = 0;
   }
-  if (end < text.length && text.length - end < 20) {
-    end = text.length;
+  if (end < plainText.length && plainText.length - end < 20) {
+    end = plainText.length;
   }
   
-  let fragment = text.substring(start, end);
+  let fragment = plainText.substring(start, end);
   
   if (start > 0) {
     fragment = '...' + fragment;
   }
-  if (end < text.length) {
+  if (end < plainText.length) {
     fragment = fragment + '...';
   }
   
@@ -203,28 +218,30 @@ function extractKeywordFragment(text, keyword, maxLength = 150) {
 }
 
 function generateExcerpt(title, content, keyword, maxLength = 150) {
-  const lowerTitle = title ? title.toLowerCase() : '';
-  const lowerContent = content ? content.toLowerCase() : '';
+  const plainTitle = title || '';
+  const plainContent = stripHtml(content);
+  const lowerTitle = plainTitle.toLowerCase();
+  const lowerContent = plainContent.toLowerCase();
   const lowerKeyword = keyword.toLowerCase();
   
   const titleHasKeyword = lowerTitle.includes(lowerKeyword);
   const contentHasKeyword = lowerContent.includes(lowerKeyword);
   
   if (titleHasKeyword && !contentHasKeyword) {
-    return extractKeywordFragment(title, keyword, maxLength);
+    return extractKeywordFragment(plainTitle, keyword, maxLength);
   }
   
   if (contentHasKeyword) {
-    return extractKeywordFragment(content, keyword, maxLength);
+    return extractKeywordFragment(plainContent, keyword, maxLength);
   }
   
-  if (title) {
-    return title.length > maxLength 
-      ? title.substring(0, maxLength) + '...' 
-      : title;
+  if (plainTitle) {
+    return plainTitle.length > maxLength 
+      ? plainTitle.substring(0, maxLength) + '...' 
+      : plainTitle;
   }
   
-  return content ? (content.length > maxLength ? content.substring(0, maxLength) + '...' : content) : '';
+  return plainContent ? (plainContent.length > maxLength ? plainContent.substring(0, maxLength) + '...' : plainContent) : '';
 }
 
 app.get('/api/categories', async (req, res) => {
@@ -343,8 +360,9 @@ app.get('/api/articles/search', async (req, res) => {
       `, [article.id]);
       article.tags = tags;
       
+      const plainContent = stripHtml(article.content);
       article.title_highlighted = highlightKeyword(article.title, keyword);
-      article.content_highlighted = highlightKeyword(article.content, keyword);
+      article.content_highlighted = highlightKeyword(plainContent, keyword);
       article.excerpt = generateExcerpt(article.title, article.content, keyword, 150);
       article.excerpt_highlighted = highlightKeyword(article.excerpt, keyword);
     }

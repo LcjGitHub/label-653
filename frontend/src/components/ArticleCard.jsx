@@ -1,10 +1,18 @@
 import { Link } from 'react-router-dom';
 import LikeButton from './LikeButton';
 
+function stripHtml(html) {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
+}
+
 export default function ArticleCard({ article }) {
-  const excerpt = article.content.length > 150
-    ? article.content.substring(0, 150) + '...'
-    : article.content;
+  const plainContent = stripHtml(article.content);
+  const excerpt = plainContent.length > 150
+    ? plainContent.substring(0, 150) + '...'
+    : plainContent;
 
   return (
     <div className="article-card">
