@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
+  const { user, isAuthenticated, logout, loading } = useAuth();
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -31,6 +33,13 @@ export default function Navbar() {
       handleSubmit(e);
     }
   };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const displayName = user ? (user.nickname || user.username) : '';
 
   function isActive(path) {
     if (path === '/') {
@@ -86,6 +95,33 @@ export default function Navbar() {
           >
             写文章
           </Link>
+          {isAuthenticated ? (
+            <div className="nav-user">
+              <span className="nav-username">{displayName}</span>
+              <button
+                className="nav-link nav-link-logout"
+                onClick={handleLogout}
+                disabled={loading}
+              >
+                {loading ? '退出中...' : '退出'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className={`nav-link ${isActive('/login') ? 'active' : ''}`}
+              >
+                登录
+              </Link>
+              <Link
+                to="/register"
+                className={`nav-link nav-link-btn ${isActive('/register') ? 'active' : ''}`}
+              >
+                注册
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </nav>

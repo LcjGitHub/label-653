@@ -1,4 +1,6 @@
 const API_BASE = '/api';
+const TOKEN_KEY = 'blog_token';
+const USER_KEY = 'blog_user';
 const USER_ID_KEY = 'blog_user_identifier';
 
 function getOrCreateUserId() {
@@ -10,6 +12,35 @@ function getOrCreateUserId() {
     localStorage.setItem(USER_ID_KEY, userId);
   }
   return userId;
+}
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function removeToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getCurrentUser() {
+  const userStr = localStorage.getItem(USER_KEY);
+  return userStr ? JSON.parse(userStr) : null;
+}
+
+export function setCurrentUser(user) {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function removeCurrentUser() {
+  localStorage.removeItem(USER_KEY);
+}
+
+export function isAuthenticated() {
+  return !!getToken();
 }
 
 async function handleError(response) {
@@ -30,8 +61,13 @@ async function handleError(response) {
 async function request(url, options = {}) {
   try {
     const headers = options.headers || {};
-    const userId = getOrCreateUserId();
-    headers['x-user-id'] = userId;
+    const token = getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      const userId = getOrCreateUserId();
+      headers['x-user-id'] = userId;
+    }
     
     const response = await fetch(`${API_BASE}${url}`, {
       ...options,
@@ -47,6 +83,36 @@ async function request(url, options = {}) {
     }
     throw e;
   }
+}
+
+export async function register(data) {
+  return request('/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function login(data) {
+  return request('/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function logout() {
+  return request('/auth/logout', {
+    method: 'POST',
+  });
+}
+
+export async function getMe() {
+  return request('/auth/me');
 }
 
 export async function getCategories() {
@@ -192,9 +258,16 @@ export async function pinArticle(articleId, pinned) {
 }
 
 export async function exportArticle(articleId, format = 'markdown') {
-  const userId = getOrCreateUserId();
+  const token = getToken();
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    const userId = getOrCreateUserId();
+    headers['x-user-id'] = userId;
+  }
   const response = await fetch(`${API_BASE}/articles/${articleId}/export?format=${format}`, {
-    headers: { 'x-user-id': userId }
+    headers
   });
   if (!response.ok) {
     await handleError(response);
@@ -203,13 +276,19 @@ export async function exportArticle(articleId, format = 'markdown') {
 }
 
 export async function exportArticlesBatch(ids, format = 'markdown') {
-  const userId = getOrCreateUserId();
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    const userId = getOrCreateUserId();
+    headers['x-user-id'] = userId;
+  }
   const response = await fetch(`${API_BASE}/articles/export/batch`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': userId
-    },
+    headers,
     body: JSON.stringify({ ids, format })
   });
   if (!response.ok) {

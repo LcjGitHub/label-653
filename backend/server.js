@@ -5,14 +5,27 @@ const TurndownService = require('turndown');
 const PDFDocument = require('pdfkit');
 const archiver = require('archiver');
 const { initDatabase, all, get, run } = require('./database');
+const {
+  hashPassword,
+  comparePassword,
+  generateToken,
+  authMiddleware,
+  requireAuth,
+  blacklistToken,
+  TOKEN_TYPE
+} = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
 app.use(cors());
 app.use(express.json());
+app.use(authMiddleware);
 
 function getUserIdentifier(req) {
+  if (req.user) {
+    return `user_${req.user.id}`;
+  }
   const userId = req.headers['x-user-id'];
   if (userId) {
     return userId;
@@ -304,6 +317,109 @@ function generateExcerpt(title, content, keyword, maxLength = 150) {
   
   return plainContent ? (plainContent.length > maxLength ? plainContent.substring(0, maxLength) + '...' : plainContent) : '';
 }
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, nickname, email } = req.body;
+
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: '用户名不能为空' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: '密码长度至少为 6 位' });
+    }
+
+    const existingUser = await get('SELECT id FROM users WHERE username = ?', [username.trim()]);
+    if (existingUser) {
+      return res.status(400).json({ error: '用户名已存在' });
+    }
+
+    const hashedPassword = await hashPassword(password);
+    const result = await run(
+      'INSERT INTO users (username, password, nickname, email) VALUES (?, ?, ?, ?)',
+      [username.trim(), hashedPassword, nickname ? nickname.trim() : null, email ? email.trim() : null]
+    );
+
+    const user = await get(
+      'SELECT id, username, nickname, email, created_at FROM users WHERE id = ?',
+      [result.lastID]
+    );
+    const token = generateToken(user);
+
+    res.status(201).json({
+      message: '注册成功',
+      token,
+      token_type: TOKEN_TYPE,
+      user
+    });
+  } catch (error) {
+    console.error('注册失败:', error);
+    res.status(500).json({ error: '注册失败' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+
+    const user = await get('SELECT * FROM users WHERE username = ?', [username.trim()]);
+    if (!user) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+
+    const isValid = await comparePassword(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: '用户名或密码错误' });
+    }
+
+    const safeUser = {
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      email: user.email,
+      created_at: user.created_at
+    };
+    const token = generateToken(safeUser);
+
+    res.json({
+      message: '登录成功',
+      token,
+      token_type: TOKEN_TYPE,
+      user: safeUser
+    });
+  } catch (error) {
+    console.error('登录失败:', error);
+    res.status(500).json({ error: '登录失败' });
+  }
+});
+
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  try {
+    if (req.token) {
+      await blacklistToken(req.token, req.user.id);
+    }
+    res.json({ message: '登出成功' });
+  } catch (error) {
+    console.error('登出失败:', error);
+    res.status(500).json({ error: '登出失败' });
+  }
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: '未登录' });
+    }
+    res.json({ user: req.user });
+  } catch (error) {
+    console.error('获取用户信息失败:', error);
+    res.status(500).json({ error: '获取用户信息失败' });
+  }
+});
 
 app.get('/api/categories', async (req, res) => {
   try {
@@ -1073,13 +1189,15 @@ app.post('/api/articles/:id/comments', async (req, res) => {
   try {
     const { id } = req.params;
     const { nickname, content, parent_id } = req.body;
+    const userId = req.user ? req.user.id : null;
+    const displayNickname = req.user ? (req.user.nickname || req.user.username) : nickname;
     
     const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!article) {
       return res.status(404).json({ error: '文章不存在' });
     }
     
-    if (!nickname || !nickname.trim()) {
+    if (!displayNickname || !displayNickname.trim()) {
       return res.status(400).json({ error: '昵称不能为空' });
     }
     
@@ -1098,8 +1216,8 @@ app.post('/api/articles/:id/comments', async (req, res) => {
     }
     
     const result = await run(
-      'INSERT INTO comments (article_id, nickname, content, parent_id) VALUES (?, ?, ?, ?)',
-      [parseInt(id), nickname.trim(), content.trim(), parent_id ? parseInt(parent_id) : null]
+      'INSERT INTO comments (article_id, nickname, content, parent_id, user_id) VALUES (?, ?, ?, ?, ?)',
+      [parseInt(id), displayNickname.trim(), content.trim(), parent_id ? parseInt(parent_id) : null, userId]
     );
     
     const newComment = await get(
@@ -1139,6 +1257,7 @@ app.post('/api/articles/:id/like', async (req, res) => {
     const { id } = req.params;
     const userIdentifier = getUserIdentifier(req);
     const ipAddress = getClientIp(req);
+    const userId = req.user ? req.user.id : null;
     
     const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!article) {
@@ -1151,8 +1270,8 @@ app.post('/api/articles/:id/like', async (req, res) => {
     }
     
     await run(
-      'INSERT INTO likes (article_id, user_identifier, ip_address) VALUES (?, ?, ?)',
-      [parseInt(id), userIdentifier, ipAddress]
+      'INSERT INTO likes (article_id, user_identifier, ip_address, user_id) VALUES (?, ?, ?, ?)',
+      [parseInt(id), userIdentifier, ipAddress, userId]
     );
     
     const likeCount = await getArticleLikeCount(id);
@@ -1204,6 +1323,7 @@ app.post('/api/articles/:id/favorite', async (req, res) => {
     const { id } = req.params;
     const userIdentifier = getUserIdentifier(req);
     const ipAddress = getClientIp(req);
+    const userId = req.user ? req.user.id : null;
     
     const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!article) {
@@ -1216,8 +1336,8 @@ app.post('/api/articles/:id/favorite', async (req, res) => {
     }
     
     await run(
-      'INSERT INTO favorites (article_id, user_identifier, ip_address) VALUES (?, ?, ?)',
-      [parseInt(id), userIdentifier, ipAddress]
+      'INSERT INTO favorites (article_id, user_identifier, ip_address, user_id) VALUES (?, ?, ?, ?)',
+      [parseInt(id), userIdentifier, ipAddress, userId]
     );
     
     const favoriteCount = await getArticleFavoriteCount(id);
@@ -1410,6 +1530,10 @@ const serverPromise = initDatabase().then(() => {
     app.listen(PORT, () => {
       console.log(`服务器运行在 http://localhost:${PORT}`);
       console.log(`API 接口:`);
+      console.log(`  POST   /api/auth/register             - 用户注册`);
+      console.log(`  POST   /api/auth/login                - 用户登录`);
+      console.log(`  POST   /api/auth/logout               - 用户登出(需登录)`);
+      console.log(`  GET    /api/auth/me                   - 获取当前登录用户信息`);
       console.log(`  GET    /api/categories                - 获取所有分类`);
       console.log(`  GET    /api/tags                      - 获取所有标签`);
       console.log(`  GET    /api/articles                  - 获取已发布文章列表(支持?category=id或?tag=id筛选)`);

@@ -5,6 +5,8 @@ import ArticleDetail from './pages/ArticleDetail';
 import ArticleForm from './pages/ArticleForm';
 import Admin from './pages/Admin';
 import SearchResults from './pages/SearchResults';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import './App.css';
 
 function App() {
@@ -22,6 +24,8 @@ function App() {
             <Route path="/create" element={<ArticleForm isEdit={false} />} />
             <Route path="/edit/:id" element={<ArticleForm isEdit={true} />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
           </Routes>
         </main>
         <footer className="footer">
