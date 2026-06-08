@@ -76,12 +76,12 @@ async function getArticleWithDetails(articleId) {
 }
 
 const SORT_OPTIONS = {
-  'created_desc': 'a.created_at DESC',
-  'created_asc': 'a.created_at ASC',
-  'updated_desc': 'a.updated_at DESC',
-  'updated_asc': 'a.updated_at ASC',
-  'likes_desc': 'like_count DESC',
-  'likes_asc': 'like_count ASC'
+  'created_desc': 'a.is_pinned DESC, a.pinned_at DESC, a.created_at DESC',
+  'created_asc': 'a.is_pinned DESC, a.pinned_at DESC, a.created_at ASC',
+  'updated_desc': 'a.is_pinned DESC, a.pinned_at DESC, a.updated_at DESC',
+  'updated_asc': 'a.is_pinned DESC, a.pinned_at DESC, a.updated_at ASC',
+  'likes_desc': 'a.is_pinned DESC, a.pinned_at DESC, like_count DESC',
+  'likes_asc': 'a.is_pinned DESC, a.pinned_at DESC, like_count ASC'
 };
 
 async function getArticlesWithDetails(whereClause = '', params = [], sort = 'created_desc', page = 1, pageSize = 10) {
@@ -413,7 +413,7 @@ app.get('/api/articles/search', async (req, res) => {
       FROM articles a
       LEFT JOIN categories c ON a.category_id = c.id
       WHERE a.status = ? AND (a.title LIKE ? OR a.content LIKE ?)
-      ORDER BY match_score DESC, a.created_at DESC
+      ORDER BY a.is_pinned DESC, a.pinned_at DESC, match_score DESC, a.created_at DESC
       LIMIT ? OFFSET ?
     `, [likeKeyword, likeKeyword, 'published', likeKeyword, likeKeyword, pageSizeValue, offset]);
     
@@ -660,6 +660,35 @@ app.delete('/api/articles/:id', async (req, res) => {
   } catch (error) {
     console.error('删除文章失败:', error);
     res.status(500).json({ error: '删除文章失败' });
+  }
+});
+
+app.put('/api/articles/:id/pin', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pinned } = req.body;
+    
+    const exists = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!exists) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    const isPinned = pinned ? 1 : 0;
+    const pinnedAt = pinned ? new Date().toISOString() : null;
+    
+    await run(
+      'UPDATE articles SET is_pinned = ?, pinned_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [isPinned, pinnedAt, parseInt(id)]
+    );
+    
+    const updatedArticle = await getArticleWithDetails(id);
+    res.json({
+      message: pinned ? '文章置顶成功' : '取消置顶成功',
+      article: updatedArticle
+    });
+  } catch (error) {
+    console.error('切换置顶状态失败:', error);
+    res.status(500).json({ error: '切换置顶状态失败' });
   }
 });
 
@@ -1046,6 +1075,7 @@ initDatabase().then(() => {
     console.log(`  POST   /api/articles                  - 创建文章(支持status:draft/published, category_id和tags)`);
     console.log(`  PUT    /api/articles/:id              - 更新文章(支持status, category_id和tags)`);
     console.log(`  DELETE /api/articles/:id              - 删除文章`);
+    console.log(`  PUT    /api/articles/:id/pin          - 切换文章置顶状态`);
     console.log(`  GET    /api/articles/:id/comments     - 获取文章评论列表`);
     console.log(`  POST   /api/articles/:id/comments     - 添加评论`);
     console.log(`  DELETE /api/comments/:id              - 删除评论`);

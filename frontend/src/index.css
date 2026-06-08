@@ -1510,6 +1510,75 @@ a:hover {
   transition: opacity 0.2s ease;
 }
 
+.article-card-pinned {
+  border: 2px solid #fbbf24;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+  position: relative;
+}
+
+.article-card-pinned::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+  border-radius: 12px 12px 0 0;
+}
+
+.pin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.pin-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+}
+
+.btn-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.btn-pin:hover {
+  border-color: #f59e0b;
+  color: #f59e0b;
+  background-color: #fffbeb;
+}
+
+.btn-pin.active {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  color: white;
+}
+
+.btn-pin.active:hover {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  border-color: #d97706;
+}
+
 @media (max-width: 969px) {
   .home-layout {
     grid-template-columns: 1fr;

@@ -180,3 +180,13 @@ export async function getArticleFavorites(articleId) {
 export async function getArticleStats() {
   return request('/articles/stats');
 }
+
+export async function pinArticle(articleId, pinned) {
+  return request(`/articles/${articleId}/pin`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ pinned }),
+  });
+}

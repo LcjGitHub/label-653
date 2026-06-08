@@ -47,6 +47,8 @@ function initDatabase() {
               author TEXT DEFAULT '管理员',
               category_id INTEGER,
               status TEXT DEFAULT 'published',
+              is_pinned INTEGER DEFAULT 0,
+              pinned_at DATETIME,
               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -239,6 +241,8 @@ function initDatabase() {
                     
                     const hasCategoryId = columns.some(col => col.name === 'category_id');
                     const hasStatus = columns.some(col => col.name === 'status');
+                    const hasIsPinned = columns.some(col => col.name === 'is_pinned');
+                    const hasPinnedAt = columns.some(col => col.name === 'pinned_at');
                     
                     let pendingAlters = 0;
                     
@@ -278,7 +282,37 @@ function initDatabase() {
                       });
                     }
                     
-                    if (hasCategoryId && hasStatus) {
+                    if (!hasIsPinned) {
+                      pendingAlters++;
+                      db.run(`
+                        ALTER TABLE articles ADD COLUMN is_pinned INTEGER DEFAULT 0
+                      `, (err) => {
+                        if (err) {
+                          console.warn('添加 is_pinned 列失败:', err.message);
+                        } else {
+                          console.log('已为 articles 表添加 is_pinned 列');
+                        }
+                        pendingAlters--;
+                        checkDone();
+                      });
+                    }
+                    
+                    if (!hasPinnedAt) {
+                      pendingAlters++;
+                      db.run(`
+                        ALTER TABLE articles ADD COLUMN pinned_at DATETIME
+                      `, (err) => {
+                        if (err) {
+                          console.warn('添加 pinned_at 列失败:', err.message);
+                        } else {
+                          console.log('已为 articles 表添加 pinned_at 列');
+                        }
+                        pendingAlters--;
+                        checkDone();
+                      });
+                    }
+                    
+                    if (hasCategoryId && hasStatus && hasIsPinned && hasPinnedAt) {
                       seedArticlesWithCategories();
                     }
                   });

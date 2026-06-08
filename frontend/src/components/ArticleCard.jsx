@@ -35,10 +35,22 @@ export default function ArticleCard({ article }) {
     ? plainContent.substring(0, 150) + '...'
     : plainContent;
 
+  const isPinned = article.is_pinned === 1 || article.is_pinned === true;
+
   return (
-    <div className="article-card">
+    <div className={`article-card ${isPinned ? 'article-card-pinned' : ''}`}>
       <div className="article-card-header">
-        <span className="article-author">{article.author}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {isPinned && (
+            <span className="pin-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ verticalAlign: 'middle', marginRight: '4px' }}>
+                <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+              </svg>
+              置顶
+            </span>
+          )}
+          <span className="article-author">{article.author}</span>
+        </div>
         <span className="article-date">
           {new Date(article.created_at).toLocaleDateString('zh-CN')}
         </span>

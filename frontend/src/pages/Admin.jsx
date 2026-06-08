@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
+import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats, pinArticle } from '../services/api';
 import Pagination from '../components/Pagination';
 
 const SORT_OPTIONS = [
@@ -188,6 +188,20 @@ export default function Admin() {
     }
   }
 
+  async function handleTogglePin(articleId, currentPinned) {
+    try {
+      const newPinned = !currentPinned;
+      await pinArticle(articleId, newPinned);
+      if (articleSubTab === 'published') {
+        fetchArticles();
+      } else {
+        fetchDrafts();
+      }
+    } catch (err) {
+      setError('切换置顶状态失败：' + (err.message || '未知错误'));
+    }
+  }
+
   function confirmDelete(id, type) {
     setDeleteId(id);
     setDeleteType(type);
@@ -312,16 +326,28 @@ export default function Admin() {
                               <th>点赞数</th>
                               <th>收藏数</th>
                               <th>发布时间</th>
+                              <th>置顶</th>
                               <th>操作</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {articles.map(article => (
+                            {articles.map(article => {
+                              const isPinned = article.is_pinned === 1 || article.is_pinned === true;
+                              return (
                               <tr key={article.id}>
                                 <td>{article.id}</td>
                                 <td className="table-title">
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {isPinned && (
+                                    <span className="pin-icon" title="已置顶">
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                                      </svg>
+                                    </span>
+                                  )}
                                   <Link to={`/article/${article.id}`}>{article.title}</Link>
-                                </td>
+                                </div>
+                              </td>
                                 <td>
                                   {article.category_name ? (
                                     <span className="badge badge-primary">
@@ -345,6 +371,18 @@ export default function Admin() {
                                 <td>
                                   {new Date(article.created_at).toLocaleString('zh-CN')}
                                 </td>
+                                <td>
+                                  <button
+                                    className={`btn-pin ${isPinned ? 'active' : ''}`}
+                                    onClick={() => handleTogglePin(article.id, isPinned)}
+                                    title={isPinned ? '取消置顶' : '置顶'}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M16 12V4H13L14 2H10L11 4H8V12L6 14V16H11.5V22H12.5V16H18V14L16 12Z" fill="currentColor" />
+                                    </svg>
+                                    <span>{isPinned ? '取消' : '置顶'}</span>
+                                  </button>
+                                </td>
                                 <td className="table-actions">
                                   <button
                                     className="btn-action btn-edit"
@@ -358,9 +396,9 @@ export default function Admin() {
                                   >
                                     删除
                                   </button>
-                                </td>
+                                  </td>
                               </tr>
-                            ))}
+                            ); })}
                           </tbody>
                         </table>
                         <div className="pagination-wrapper admin-pagination">
