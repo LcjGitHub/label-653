@@ -66,6 +66,30 @@ async function getArticleFavoriteCount(articleId) {
   return result ? result.count : 0;
 }
 
+async function findUserIdByAuthorName(authorName) {
+  if (!authorName) return null;
+  const user = await get(
+    'SELECT id FROM users WHERE username = ? OR nickname = ? LIMIT 1',
+    [authorName, authorName]
+  );
+  return user ? user.id : null;
+}
+
+async function createNotification({ userId, type, articleId = null, commentId = null, fromUserId = null, fromUserName = null, content = null }) {
+  if (!userId) return null;
+  try {
+    const result = await run(
+      `INSERT INTO notifications (user_id, type, article_id, comment_id, from_user_id, from_user_name, content) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, type, articleId, commentId, fromUserId, fromUserName, content]
+    );
+    return result.lastID;
+  } catch (err) {
+    console.error('创建通知失败:', err);
+    return null;
+  }
+}
+
 async function hasUserLiked(articleId, userIdentifier) {
   const result = await get('SELECT 1 FROM likes WHERE article_id = ? AND user_identifier = ?', [parseInt(articleId), userIdentifier]);
   return !!result;
@@ -1437,6 +1461,36 @@ app.post('/api/articles/:id/comments', async (req, res) => {
       [result.lastID]
     );
     
+    const authorUserId = await findUserIdByAuthorName(article.author);
+    if (authorUserId && authorUserId !== userId) {
+      await createNotification({
+        userId: authorUserId,
+        type: parent_id ? 'reply' : 'comment',
+        articleId: parseInt(id),
+        commentId: result.lastID,
+        fromUserId: userId,
+        fromUserName: displayNickname.trim(),
+        content: parent_id 
+          ? `${displayNickname.trim()} 回复了你的评论，在文章《${article.title}》中`
+          : `${displayNickname.trim()} 评论了你的文章《${article.title}》：${content.trim().substring(0, 50)}${content.trim().length > 50 ? '...' : ''}`
+      });
+    }
+    
+    if (parent_id) {
+      const parentComment = await get('SELECT * FROM comments WHERE id = ?', [parseInt(parent_id)]);
+      if (parentComment && parentComment.user_id && parentComment.user_id !== userId && parentComment.user_id !== authorUserId) {
+        await createNotification({
+          userId: parentComment.user_id,
+          type: 'reply',
+          articleId: parseInt(id),
+          commentId: result.lastID,
+          fromUserId: userId,
+          fromUserName: displayNickname.trim(),
+          content: `${displayNickname.trim()} 回复了你的评论，在文章《${article.title}》中`
+        });
+      }
+    }
+    
     res.status(201).json(newComment);
   } catch (error) {
     console.error('添加评论失败:', error);
@@ -1467,6 +1521,7 @@ app.post('/api/articles/:id/like', async (req, res) => {
     const userIdentifier = getUserIdentifier(req);
     const ipAddress = getClientIp(req);
     const userId = req.user ? req.user.id : null;
+    const fromUserName = req.user ? (req.user.nickname || req.user.username) : '匿名用户';
     
     const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!article) {
@@ -1482,6 +1537,18 @@ app.post('/api/articles/:id/like', async (req, res) => {
       'INSERT INTO likes (article_id, user_identifier, ip_address, user_id) VALUES (?, ?, ?, ?)',
       [parseInt(id), userIdentifier, ipAddress, userId]
     );
+    
+    const authorUserId = await findUserIdByAuthorName(article.author);
+    if (authorUserId && authorUserId !== userId) {
+      await createNotification({
+        userId: authorUserId,
+        type: 'like',
+        articleId: parseInt(id),
+        fromUserId: userId,
+        fromUserName: fromUserName,
+        content: `${fromUserName} 赞了你的文章《${article.title}》`
+      });
+    }
     
     const likeCount = await getArticleLikeCount(id);
     res.json({ 
@@ -1533,6 +1600,7 @@ app.post('/api/articles/:id/favorite', async (req, res) => {
     const userIdentifier = getUserIdentifier(req);
     const ipAddress = getClientIp(req);
     const userId = req.user ? req.user.id : null;
+    const fromUserName = req.user ? (req.user.nickname || req.user.username) : '匿名用户';
     
     const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!article) {
@@ -1548,6 +1616,18 @@ app.post('/api/articles/:id/favorite', async (req, res) => {
       'INSERT INTO favorites (article_id, user_identifier, ip_address, user_id) VALUES (?, ?, ?, ?)',
       [parseInt(id), userIdentifier, ipAddress, userId]
     );
+    
+    const authorUserId = await findUserIdByAuthorName(article.author);
+    if (authorUserId && authorUserId !== userId) {
+      await createNotification({
+        userId: authorUserId,
+        type: 'favorite',
+        articleId: parseInt(id),
+        fromUserId: userId,
+        fromUserName: fromUserName,
+        content: `${fromUserName} 收藏了你的文章《${article.title}》`
+      });
+    }
     
     const favoriteCount = await getArticleFavoriteCount(id);
     res.json({ 
@@ -1734,6 +1814,133 @@ app.get('/api/comments', async (req, res) => {
   }
 });
 
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20, unread_only = 'false' } = req.query;
+    const userId = req.user.id;
+    
+    const pageValue = Math.max(1, parseInt(page));
+    const pageSizeValue = Math.min(100, Math.max(1, parseInt(pageSize)));
+    const offset = (pageValue - 1) * pageSizeValue;
+    
+    let whereClause = 'WHERE n.user_id = ?';
+    const countParams = [userId];
+    const dataParams = [userId];
+    
+    if (unread_only === 'true') {
+      whereClause += ' AND n.is_read = 0';
+    }
+    
+    const countResult = await get(
+      `SELECT COUNT(*) as total FROM notifications n ${whereClause}`,
+      countParams
+    );
+    const total = countResult ? countResult.total : 0;
+    const totalPages = Math.max(1, Math.ceil(total / pageSizeValue));
+    
+    const notifications = await all(
+      `SELECT n.*, a.title as article_title 
+       FROM notifications n 
+       LEFT JOIN articles a ON n.article_id = a.id 
+       ${whereClause}
+       ORDER BY n.created_at DESC 
+       LIMIT ? OFFSET ?`,
+      [...dataParams, pageSizeValue, offset]
+    );
+    
+    res.json({
+      notifications,
+      total,
+      page: pageValue,
+      pageSize: pageSizeValue,
+      totalPages
+    });
+  } catch (error) {
+    console.error('获取通知列表失败:', error);
+    res.status(500).json({ error: '获取通知列表失败' });
+  }
+});
+
+app.get('/api/notifications/unread-count', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await get(
+      'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0',
+      [userId]
+    );
+    res.json({ unread_count: result ? result.count : 0 });
+  } catch (error) {
+    console.error('获取未读通知数量失败:', error);
+    res.status(500).json({ error: '获取未读通知数量失败' });
+  }
+});
+
+app.put('/api/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const notification = await get(
+      'SELECT * FROM notifications WHERE id = ? AND user_id = ?',
+      [parseInt(id), userId]
+    );
+    if (!notification) {
+      return res.status(404).json({ error: '通知不存在' });
+    }
+    
+    await run(
+      'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?',
+      [parseInt(id), userId]
+    );
+    
+    res.json({ message: '标记已读成功' });
+  } catch (error) {
+    console.error('标记通知已读失败:', error);
+    res.status(500).json({ error: '标记通知已读失败' });
+  }
+});
+
+app.put('/api/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    await run(
+      'UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0',
+      [userId]
+    );
+    
+    res.json({ message: '全部标记已读成功' });
+  } catch (error) {
+    console.error('全部标记已读失败:', error);
+    res.status(500).json({ error: '全部标记已读失败' });
+  }
+});
+
+app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const notification = await get(
+      'SELECT * FROM notifications WHERE id = ? AND user_id = ?',
+      [parseInt(id), userId]
+    );
+    if (!notification) {
+      return res.status(404).json({ error: '通知不存在' });
+    }
+    
+    await run(
+      'DELETE FROM notifications WHERE id = ? AND user_id = ?',
+      [parseInt(id), userId]
+    );
+    
+    res.json({ message: '删除通知成功' });
+  } catch (error) {
+    console.error('删除通知失败:', error);
+    res.status(500).json({ error: '删除通知失败' });
+  }
+});
+
 const serverPromise = initDatabase().then(() => {
   if (require.main === module) {
     app.listen(PORT, () => {
@@ -1772,6 +1979,11 @@ const serverPromise = initDatabase().then(() => {
       console.log(`  GET    /api/articles/:id/versions/:versionId - 获取版本详情`);
       console.log(`  POST   /api/articles/:id/versions/:versionId/restore - 恢复到指定版本`);
       console.log(`  DELETE /api/articles/:id/versions/:versionId - 删除指定版本`);
+      console.log(`  GET    /api/notifications             - 获取通知列表(需登录)`);
+      console.log(`  GET    /api/notifications/unread-count - 获取未读通知数量(需登录)`);
+      console.log(`  PUT    /api/notifications/:id/read    - 标记单条通知为已读(需登录)`);
+      console.log(`  PUT    /api/notifications/read-all    - 标记所有通知为已读(需登录)`);
+      console.log(`  DELETE /api/notifications/:id         - 删除通知(需登录)`);
     });
   }
   return app;

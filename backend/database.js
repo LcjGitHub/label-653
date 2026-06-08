@@ -152,6 +152,25 @@ function createTables(resolve, reject) {
       )
     `);
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        article_id INTEGER,
+        comment_id INTEGER,
+        from_user_id INTEGER,
+        from_user_name TEXT,
+        content TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+        FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+        FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+
     db.run(`CREATE INDEX IF NOT EXISTS idx_articles_status_created ON articles(status, created_at DESC)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_article_versions_article ON article_versions(article_id, version_number DESC)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id)`);
@@ -165,6 +184,8 @@ function createTables(resolve, reject) {
     db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_token ON token_blacklist(token)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist(expires_at)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read, created_at DESC)`);
 
     seedDefaultData(resolve, reject);
   });

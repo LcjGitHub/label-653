@@ -347,3 +347,34 @@ export async function deleteArticleVersion(articleId, versionId) {
     method: 'DELETE',
   });
 }
+
+export async function getNotifications(options = {}) {
+  const params = new URLSearchParams();
+  if (options.page) params.append('page', options.page);
+  if (options.pageSize) params.append('pageSize', options.pageSize);
+  if (options.unread_only) params.append('unread_only', options.unread_only);
+  const queryString = params.toString();
+  return request(`/notifications${queryString ? `?${queryString}` : ''}`);
+}
+
+export async function getUnreadNotificationCount() {
+  return request('/notifications/unread-count');
+}
+
+export async function markNotificationRead(id) {
+  return request(`/notifications/${id}/read`, {
+    method: 'PUT',
+  });
+}
+
+export async function markAllNotificationsRead() {
+  return request('/notifications/read-all', {
+    method: 'PUT',
+  });
+}
+
+export async function deleteNotification(id) {
+  return request(`/notifications/${id}`, {
+    method: 'DELETE',
+  });
+}

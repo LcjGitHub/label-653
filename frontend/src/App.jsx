@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import NotificationToast from './components/NotificationToast';
 import Home from './pages/Home';
 import ArticleDetail from './pages/ArticleDetail';
 import ArticleForm from './pages/ArticleForm';
@@ -7,6 +8,7 @@ import Admin from './pages/Admin';
 import SearchResults from './pages/SearchResults';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Notifications from './pages/Notifications';
 import './App.css';
 
 function App() {
@@ -26,6 +28,7 @@ function App() {
             <Route path="/admin" element={<Admin />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/notifications" element={<Notifications />} />
           </Routes>
         </main>
         <footer className="footer">
@@ -33,6 +36,7 @@ function App() {
             <p>© {currentYear} 博客系统 · 基于节点服务框架与界面库及嵌入式数据库构建</p>
           </div>
         </footer>
+        <NotificationToast />
       </div>
     </Router>
   );

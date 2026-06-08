@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 
 export default function Navbar() {
   const location = useLocation();
@@ -8,6 +9,7 @@ export default function Navbar() {
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const { user, isAuthenticated, logout, loading } = useAuth();
+  const { unreadCount } = useNotifications();
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -97,6 +99,18 @@ export default function Navbar() {
           </Link>
           {isAuthenticated ? (
             <div className="nav-user">
+              <Link
+                to="/notifications"
+                className={`nav-link nav-notification ${isActive('/notifications') ? 'active' : ''}`}
+                title="消息通知"
+              >
+                🔔
+                {unreadCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Link>
               <span className="nav-username">{displayName}</span>
               <button
                 className="nav-link nav-link-logout"
