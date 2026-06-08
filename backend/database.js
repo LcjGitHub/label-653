@@ -133,7 +133,27 @@ function createTables(resolve, reject) {
       )
     `);
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS article_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        author TEXT,
+        category_id INTEGER,
+        status TEXT,
+        tag_ids TEXT,
+        version_number INTEGER NOT NULL,
+        user_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE(article_id, version_number)
+      )
+    `);
+
     db.run(`CREATE INDEX IF NOT EXISTS idx_articles_status_created ON articles(status, created_at DESC)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_article_versions_article ON article_versions(article_id, version_number DESC)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_articles_pinned ON articles(is_pinned DESC, pinned_at DESC)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_likes_article ON likes(article_id)`);

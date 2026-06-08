@@ -980,6 +980,72 @@ async function getOrCreateTag(tagName) {
   return await get('SELECT * FROM tags WHERE id = ?', [result.lastID]);
 }
 
+async function createArticleVersion(articleId, userId = null) {
+  const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(articleId)]);
+  if (!article) return null;
+
+  const tagRows = await all('SELECT tag_id FROM article_tags WHERE article_id = ? ORDER BY tag_id', [parseInt(articleId)]);
+  const tagIds = tagRows.map(t => t.tag_id).join(',');
+
+  const maxVersion = await get(
+    'SELECT COALESCE(MAX(version_number), 0) as max_version FROM article_versions WHERE article_id = ?',
+    [parseInt(articleId)]
+  );
+  const nextVersion = (maxVersion ? maxVersion.max_version : 0) + 1;
+
+  const result = await run(
+    `INSERT INTO article_versions 
+     (article_id, title, content, author, category_id, status, tag_ids, version_number, user_id) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      parseInt(articleId),
+      article.title,
+      article.content,
+      article.author,
+      article.category_id,
+      article.status,
+      tagIds,
+      nextVersion,
+      userId
+    ]
+  );
+
+  return await get(
+    `SELECT av.*, u.username as user_name 
+     FROM article_versions av 
+     LEFT JOIN users u ON av.user_id = u.id 
+     WHERE av.id = ?`,
+    [result.lastID]
+  );
+}
+
+async function getArticleVersionWithDetails(versionId) {
+  const version = await get(
+    `SELECT av.*, u.username as user_name, c.name as category_name
+     FROM article_versions av 
+     LEFT JOIN users u ON av.user_id = u.id 
+     LEFT JOIN categories c ON av.category_id = c.id
+     WHERE av.id = ?`,
+    [parseInt(versionId)]
+  );
+
+  if (!version) return null;
+
+  let tags = [];
+  if (version.tag_ids) {
+    const tagIdList = version.tag_ids.split(',').filter(Boolean).map(Number);
+    if (tagIdList.length > 0) {
+      const placeholders = tagIdList.map(() => '?').join(',');
+      tags = await all(`SELECT id, name FROM tags WHERE id IN (${placeholders}) ORDER BY name`, tagIdList);
+    }
+  }
+
+  return {
+    ...version,
+    tags
+  };
+}
+
 app.post('/api/articles', async (req, res) => {
   try {
     const { title, content, author, category_id, tags, status } = req.body;
@@ -1070,6 +1136,9 @@ app.put('/api/articles/:id', async (req, res) => {
       sanitizedContent = content !== undefined ? sanitizeHtml(content) : exists.content;
     }
     
+    const userId = req.user ? req.user.id : null;
+    await createArticleVersion(parseInt(id), userId);
+    
     await run(
       'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [
@@ -1149,6 +1218,146 @@ app.put('/api/articles/:id/pin', async (req, res) => {
   } catch (error) {
     console.error('切换置顶状态失败:', error);
     res.status(500).json({ error: '切换置顶状态失败' });
+  }
+});
+
+app.get('/api/articles/:id/versions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, pageSize = 20 } = req.query;
+
+    const article = await get('SELECT id FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+
+    const pageValue = Math.max(1, parseInt(page));
+    const pageSizeValue = Math.min(100, Math.max(1, parseInt(pageSize)));
+    const offset = (pageValue - 1) * pageSizeValue;
+
+    const countResult = await get(
+      'SELECT COUNT(*) as total FROM article_versions WHERE article_id = ?',
+      [parseInt(id)]
+    );
+    const total = countResult ? countResult.total : 0;
+    const totalPages = Math.max(1, Math.ceil(total / pageSizeValue));
+
+    const versions = await all(
+      `SELECT av.*, u.username as user_name 
+       FROM article_versions av 
+       LEFT JOIN users u ON av.user_id = u.id 
+       WHERE av.article_id = ? 
+       ORDER BY av.version_number DESC 
+       LIMIT ? OFFSET ?`,
+      [parseInt(id), pageSizeValue, offset]
+    );
+
+    res.json({
+      versions,
+      total,
+      page: pageValue,
+      pageSize: pageSizeValue,
+      totalPages
+    });
+  } catch (error) {
+    console.error('获取版本列表失败:', error);
+    res.status(500).json({ error: '获取版本列表失败' });
+  }
+});
+
+app.get('/api/articles/:id/versions/:versionId', async (req, res) => {
+  try {
+    const { id, versionId } = req.params;
+
+    const article = await get('SELECT id FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+
+    const version = await getArticleVersionWithDetails(versionId);
+    if (!version) {
+      return res.status(404).json({ error: '版本不存在' });
+    }
+
+    if (version.article_id !== parseInt(id)) {
+      return res.status(400).json({ error: '版本不属于该文章' });
+    }
+
+    res.json(version);
+  } catch (error) {
+    console.error('获取版本详情失败:', error);
+    res.status(500).json({ error: '获取版本详情失败' });
+  }
+});
+
+app.post('/api/articles/:id/versions/:versionId/restore', async (req, res) => {
+  try {
+    const { id, versionId } = req.params;
+
+    const article = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+
+    const version = await getArticleVersionWithDetails(versionId);
+    if (!version) {
+      return res.status(404).json({ error: '版本不存在' });
+    }
+
+    if (version.article_id !== parseInt(id)) {
+      return res.status(400).json({ error: '版本不属于该文章' });
+    }
+
+    const userId = req.user ? req.user.id : null;
+    await createArticleVersion(parseInt(id), userId);
+
+    await run(
+      'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [
+        version.title,
+        version.content,
+        version.author || article.author,
+        version.category_id,
+        version.status || article.status,
+        parseInt(id)
+      ]
+    );
+
+    if (version.tags && version.tags.length > 0) {
+      const tagIds = version.tags.map(t => t.id);
+      await updateArticleTags(parseInt(id), tagIds);
+    }
+
+    const restoredArticle = await getArticleWithDetails(id);
+    res.json({
+      message: '恢复成功',
+      article: restoredArticle
+    });
+  } catch (error) {
+    console.error('恢复版本失败:', error);
+    res.status(500).json({ error: '恢复版本失败' });
+  }
+});
+
+app.delete('/api/articles/:id/versions/:versionId', async (req, res) => {
+  try {
+    const { id, versionId } = req.params;
+
+    const article = await get('SELECT id FROM articles WHERE id = ?', [parseInt(id)]);
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+
+    const version = await get('SELECT * FROM article_versions WHERE id = ? AND article_id = ?', [parseInt(versionId), parseInt(id)]);
+    if (!version) {
+      return res.status(404).json({ error: '版本不存在' });
+    }
+
+    await run('DELETE FROM article_versions WHERE id = ?', [parseInt(versionId)]);
+    res.json({ message: '版本删除成功' });
+  } catch (error) {
+    console.error('删除版本失败:', error);
+    res.status(500).json({ error: '删除版本失败' });
   }
 });
 
@@ -1559,6 +1768,10 @@ const serverPromise = initDatabase().then(() => {
       console.log(`  GET    /api/articles/:id/export       - 导出文章(?format=markdown/pdf)`);
       console.log(`  POST   /api/articles/export/batch     - 批量导出文章(ids:[], format:markdown/pdf)`);
       console.log(`  GET    /api/articles/:id/share        - 生成文章分享链接`);
+      console.log(`  GET    /api/articles/:id/versions     - 获取文章版本历史列表`);
+      console.log(`  GET    /api/articles/:id/versions/:versionId - 获取版本详情`);
+      console.log(`  POST   /api/articles/:id/versions/:versionId/restore - 恢复到指定版本`);
+      console.log(`  DELETE /api/articles/:id/versions/:versionId - 删除指定版本`);
     });
   }
   return app;

@@ -323,3 +323,27 @@ export function downloadFromResponse(response, filename) {
     window.URL.revokeObjectURL(url);
   });
 }
+
+export async function getArticleVersions(articleId, options = {}) {
+  const params = new URLSearchParams();
+  if (options.page) params.append('page', options.page);
+  if (options.pageSize) params.append('pageSize', options.pageSize);
+  const queryString = params.toString();
+  return request(`/articles/${articleId}/versions${queryString ? `?${queryString}` : ''}`);
+}
+
+export async function getArticleVersion(articleId, versionId) {
+  return request(`/articles/${articleId}/versions/${versionId}`);
+}
+
+export async function restoreArticleVersion(articleId, versionId) {
+  return request(`/articles/${articleId}/versions/${versionId}/restore`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteArticleVersion(articleId, versionId) {
+  return request(`/articles/${articleId}/versions/${versionId}`, {
+    method: 'DELETE',
+  });
+}

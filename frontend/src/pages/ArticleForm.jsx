@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getArticle, createArticle, updateArticle, getCategories, getTags } from '../services/api';
 import RichTextEditor from '../components/RichTextEditor';
+import VersionHistory from '../components/VersionHistory';
 
 function stripHtml(html) {
   if (!html) return '';
@@ -220,6 +221,19 @@ export default function ArticleForm({ isEdit = false }) {
     await handleSave('draft');
   }
 
+  function handleRestoreVersion(restoredArticle) {
+    if (restoredArticle) {
+      setFormData({
+        title: restoredArticle.title,
+        content: restoredArticle.content,
+        author: restoredArticle.author,
+        category_id: restoredArticle.category_id || '',
+        tags: restoredArticle.tags || [],
+        status: restoredArticle.status || 'published',
+      });
+    }
+  }
+
   if (fetchLoading) {
     return (
       <div className="container">
@@ -391,6 +405,13 @@ export default function ArticleForm({ isEdit = false }) {
             </button>
           </div>
         </form>
+
+        {isEdit && id && (
+          <VersionHistory
+            articleId={id}
+            onRestore={handleRestoreVersion}
+          />
+        )}
       </div>
     </div>
   );
