@@ -454,7 +454,6 @@ app.get('/api/articles/stats', async (req, res) => {
       SELECT 
         a.id,
         a.title,
-        a.status,
         COALESCE(l.like_count, 0) as like_count,
         COALESCE(f.favorite_count, 0) as favorite_count,
         COALESCE(c.comment_count, 0) as comment_count
@@ -474,6 +473,7 @@ app.get('/api/articles/stats', async (req, res) => {
         FROM comments 
         GROUP BY article_id
       ) c ON a.id = c.article_id
+      WHERE a.status = 'published'
       ORDER BY a.created_at DESC
     `);
     

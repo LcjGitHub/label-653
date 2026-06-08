@@ -147,7 +147,7 @@ export default function ArticleDetail() {
     );
   }
 
-  if (!article || !article.id) {
+  if (!article || !article.id || article.status === 'draft') {
     return (
       <div className="container">
         <div className="error">文章不存在</div>

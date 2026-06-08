@@ -201,6 +201,13 @@ export default function Admin() {
     setDraftsPage(page);
   }
 
+  function handleArticleSubTabChange(tab) {
+    if (tab === 'drafts') {
+      setDraftsLoading(true);
+    }
+    setArticleSubTab(tab);
+  }
+
   return (
     <div className="container">
       <div className="admin-header">
@@ -250,13 +257,13 @@ export default function Admin() {
                 <div className="admin-sub-tabs">
                   <button
                     className={`tab-btn ${articleSubTab === 'published' ? 'active' : ''}`}
-                    onClick={() => setArticleSubTab('published')}
+                    onClick={() => handleArticleSubTabChange('published')}
                   >
                     已发布
                   </button>
                   <button
                     className={`tab-btn ${articleSubTab === 'drafts' ? 'active' : ''}`}
-                    onClick={() => setArticleSubTab('drafts')}
+                    onClick={() => handleArticleSubTabChange('drafts')}
                   >
                     草稿箱
                   </button>
