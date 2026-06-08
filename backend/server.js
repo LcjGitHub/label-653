@@ -155,9 +155,21 @@ async function getArticlesWithDetails(whereClause = '', params = [], sort = 'cre
   };
 }
 
+const BLOCK_ELEMENTS = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'ol', 'li', 'table', 'tr', 'br', 'hr'];
+
 function stripHtml(html) {
   if (!html) return '';
-  return html
+  
+  let result = html;
+  
+  BLOCK_ELEMENTS.forEach(tag => {
+    const openRegex = new RegExp(`<${tag}[^>]*>`, 'gi');
+    const closeRegex = new RegExp(`</${tag}>`, 'gi');
+    result = result.replace(openRegex, '\n');
+    result = result.replace(closeRegex, '\n');
+  });
+  
+  result = result
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -165,8 +177,43 @@ function stripHtml(html) {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n/g, '\n')
+    .replace(/\n /g, '\n')
+    .replace(/ \n/g, '\n')
     .trim();
+  
+  return result;
+}
+
+function sanitizeHtml(html) {
+  if (!html) return '';
+  
+  let result = html;
+  
+  result = result.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  result = result.replace(/<script[^>]*>/gi, '');
+  result = result.replace(/<\/script>/gi, '');
+  
+  result = result.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+  result = result.replace(/<iframe[^>]*>/gi, '');
+  result = result.replace(/<\/iframe>/gi, '');
+  
+  result = result.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
+  result = result.replace(/<embed[^>]*>/gi, '');
+  
+  result = result.replace(/\son\w+\s*=\s*"[^"]*"/gi, '');
+  result = result.replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+  result = result.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+  
+  result = result.replace(/\sjavascript\s*:/gi, '');
+  result = result.replace(/\sdata\s*:/gi, '');
+  result = result.replace(/\svbscript\s*:/gi, '');
+  
+  result = result.replace(/href\s*=\s*"javascript:[^"]*"/gi, 'href="#"');
+  result = result.replace(/href\s*=\s*'javascript:[^']*'/gi, "href='#'");
+  
+  return result;
 }
 
 function highlightKeyword(text, keyword) {
@@ -460,7 +507,14 @@ app.post('/api/articles', async (req, res) => {
       return res.status(400).json({ error: '文章标题不能为空' });
     }
     
-    if (!content || !content.trim()) {
+    if (!content) {
+      return res.status(400).json({ error: '文章内容不能为空' });
+    }
+    
+    const sanitizedContent = sanitizeHtml(content);
+    const plainContent = stripHtml(sanitizedContent);
+    
+    if (!plainContent || !plainContent.trim()) {
       return res.status(400).json({ error: '文章内容不能为空' });
     }
     
@@ -468,7 +522,7 @@ app.post('/api/articles', async (req, res) => {
       'INSERT INTO articles (title, content, author, category_id) VALUES (?, ?, ?, ?)',
       [
         title.trim(), 
-        content.trim(), 
+        sanitizedContent, 
         author || '管理员',
         category_id ? parseInt(category_id) : null
       ]
@@ -509,7 +563,14 @@ app.put('/api/articles/:id', async (req, res) => {
       return res.status(400).json({ error: '文章标题不能为空' });
     }
     
-    if (!content || !content.trim()) {
+    if (!content) {
+      return res.status(400).json({ error: '文章内容不能为空' });
+    }
+    
+    const sanitizedContent = sanitizeHtml(content);
+    const plainContent = stripHtml(sanitizedContent);
+    
+    if (!plainContent || !plainContent.trim()) {
       return res.status(400).json({ error: '文章内容不能为空' });
     }
     
@@ -522,7 +583,7 @@ app.put('/api/articles/:id', async (req, res) => {
       'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [
         title.trim(), 
-        content.trim(), 
+        sanitizedContent, 
         author || exists.author,
         category_id !== undefined ? (category_id ? parseInt(category_id) : null) : exists.category_id,
         parseInt(id)

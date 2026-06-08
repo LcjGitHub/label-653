@@ -1995,6 +1995,107 @@ a:hover {
   padding: 0 !important;
 }
 
+.rich-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+}
+
+.code-block-wrapper {
+  margin: 0 0 16px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #1e293b;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: #334155;
+  border-bottom: 1px solid #475569;
+}
+
+.code-block-language-select {
+  background-color: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.code-block-language-select:hover {
+  border-color: var(--primary-color);
+}
+
+.code-block-language-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.code-block-pre {
+  margin: 0 !important;
+  padding: 16px 20px !important;
+  background-color: #1e293b !important;
+  border-radius: 0 !important;
+  overflow-x: auto;
+}
+
+.code-block-pre code {
+  background-color: transparent !important;
+  color: #e2e8f0 !important;
+  padding: 0 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.7 !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+.link-input.has-error {
+  border-color: var(--danger-color);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.link-error-text {
+  color: var(--danger-color);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.article-body .code-block-wrapper {
+  margin: 0 0 24px 0;
+}
+
+.article-body .code-block-header {
+  padding: 10px 20px;
+}
+
+.article-body .code-block-language-select {
+  font-size: 0.9rem;
+  padding: 6px 12px;
+  cursor: default;
+  background-color: #475569;
+  border-color: #64748b;
+  pointer-events: none;
+}
+
+.article-body .code-block-pre {
+  padding: 20px 24px !important;
+}
+
+.article-body .code-block-pre code {
+  font-size: 0.95rem !important;
+  line-height: 1.7 !important;
+}
+
 @media (max-width: 768px) {
   .editor-toolbar {
     padding: 6px 8px;

@@ -1,11 +1,32 @@
 import { Link } from 'react-router-dom';
 import LikeButton from './LikeButton';
 
+const BLOCK_ELEMENTS = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'ul', 'ol', 'li', 'table', 'tr', 'br', 'hr'];
+
 function stripHtml(html) {
   if (!html) return '';
+  
+  let result = html;
+  
+  BLOCK_ELEMENTS.forEach(tag => {
+    const openRegex = new RegExp(`<${tag}[^>]*>`, 'gi');
+    const closeRegex = new RegExp(`</${tag}>`, 'gi');
+    result = result.replace(openRegex, ' ');
+    result = result.replace(closeRegex, ' ');
+  });
+  
   const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || '';
+  tmp.innerHTML = result;
+  let text = tmp.textContent || tmp.innerText || '';
+  
+  text = text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n/g, '\n')
+    .replace(/\n /g, '\n')
+    .replace(/ \n/g, '\n')
+    .trim();
+  
+  return text;
 }
 
 export default function ArticleCard({ article }) {
