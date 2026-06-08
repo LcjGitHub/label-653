@@ -1492,6 +1492,12 @@ a:hover {
   font-size: 0.8rem;
 }
 
+.articles-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
 @media (max-width: 969px) {
   .home-layout {
     grid-template-columns: 1fr;

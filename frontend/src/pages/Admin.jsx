@@ -3,6 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { getArticles, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
 import Pagination from '../components/Pagination';
 
+const SORT_OPTIONS = [
+  { value: 'created_desc', label: '最新发布' },
+  { value: 'created_asc', label: '最早发布' },
+  { value: 'updated_desc', label: '最近更新' },
+  { value: 'updated_asc', label: '最早更新' },
+  { value: 'likes_desc', label: '点赞最多' },
+  { value: 'likes_asc', label: '点赞最少' }
+];
+
 export default function Admin() {
   const navigate = useNavigate();
   const errorRef = useRef(null);
@@ -20,6 +29,7 @@ export default function Admin() {
   const [articlesPage, setArticlesPage] = useState(1);
   const [articlesTotalPages, setArticlesTotalPages] = useState(1);
   const [articlesTotal, setArticlesTotal] = useState(0);
+  const [articlesSort, setArticlesSort] = useState('created_desc');
   const articlesPageSize = 10;
 
   useEffect(() => {
@@ -30,7 +40,7 @@ export default function Admin() {
     } else {
       fetchStats();
     }
-  }, [activeTab, articlesPage]);
+  }, [activeTab, articlesPage, articlesSort]);
 
   useEffect(() => {
     if (error && errorRef.current) {
@@ -45,8 +55,11 @@ export default function Admin() {
       const result = await getArticles({
         page: articlesPage,
         pageSize: articlesPageSize,
-        sort: 'created_desc'
+        sort: articlesSort
       });
+      if (result.page !== articlesPage) {
+        setArticlesPage(result.page);
+      }
       setArticles(result.articles || []);
       setArticlesTotalPages(result.totalPages || 1);
       setArticlesTotal(result.total || 0);
@@ -55,6 +68,11 @@ export default function Admin() {
     } finally {
       setArticlesLoading(false);
     }
+  }
+
+  function handleSortChange(e) {
+    setArticlesSort(e.target.value);
+    setArticlesPage(1);
   }
 
   async function fetchComments() {
@@ -184,6 +202,21 @@ export default function Admin() {
                 <div className="list-toolbar admin-toolbar">
                   <div className="list-info">
                     <span>共 {articlesTotal} 篇文章</span>
+                  </div>
+                  <div className="sort-wrapper">
+                    <label htmlFor="admin-sort-select" className="sort-label">排序：</label>
+                    <select
+                      id="admin-sort-select"
+                      className="sort-select"
+                      value={articlesSort}
+                      onChange={handleSortChange}
+                    >
+                      {SORT_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <table className="admin-table">

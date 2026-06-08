@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getArticles, getCategories, getTags } from '../services/api';
 import ArticleCard from '../components/ArticleCard';
@@ -34,6 +34,8 @@ export default function Home() {
   const [totalArticles, setTotalArticles] = useState(0);
   const [sortBy, setSortBy] = useState(sortParam || 'created_desc');
   const pageSize = 10;
+
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     loadInitialData();
@@ -73,7 +75,6 @@ export default function Home() {
     try {
       setFilterLoading(true);
       setError(null);
-      setArticles([]);
       
       const filters = {};
       if (categoryFilter) filters.category = categoryFilter;
@@ -83,9 +84,18 @@ export default function Home() {
       filters.pageSize = pageSize;
       
       const result = await getArticles(filters);
+      
+      if (result.page !== currentPage) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('page', result.page.toString());
+        setSearchParams(newParams);
+        setCurrentPage(result.page);
+      }
+      
       setArticles(result.articles || []);
       setTotalPages(result.totalPages || 1);
       setTotalArticles(result.total || 0);
+      isFirstLoad.current = false;
     } catch (err) {
       setError(err.message || '加载文章列表失败');
     } finally {
@@ -160,6 +170,8 @@ export default function Home() {
     );
   }
 
+  const showPagination = totalPages > 1;
+
   return (
     <div className="container">
       <div className="home-layout">
@@ -178,7 +190,7 @@ export default function Home() {
 
           <div className="list-toolbar">
             <div className="list-info">
-              {!filterLoading && totalArticles > 0 && (
+              {totalArticles > 0 && (
                 <span>共 {totalArticles} 篇文章</span>
               )}
             </div>
@@ -199,12 +211,12 @@ export default function Home() {
             </div>
           </div>
 
-          {filterLoading ? (
+          {filterLoading && isFirstLoad.current ? (
             <div className="loading">加载中...</div>
           ) : (
             <>
-              <div className="articles-grid">
-                {articles.length === 0 ? (
+              <div className={`articles-grid ${filterLoading ? 'articles-loading' : ''}`}>
+                {articles.length === 0 && !filterLoading ? (
                   <div className="empty-state">
                     <p>暂无文章</p>
                   </div>
@@ -214,7 +226,7 @@ export default function Home() {
                   ))
                 )}
               </div>
-              {articles.length > 0 && (
+              {showPagination && (
                 <div className="pagination-wrapper">
                   <Pagination
                     currentPage={currentPage}

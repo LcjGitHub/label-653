@@ -86,7 +86,6 @@ const SORT_OPTIONS = {
 
 async function getArticlesWithDetails(whereClause = '', params = [], sort = 'created_desc', page = 1, pageSize = 10) {
   const orderBy = SORT_OPTIONS[sort] || SORT_OPTIONS['created_desc'];
-  const offset = (page - 1) * pageSize;
 
   const countParams = [...params];
   const countSql = `
@@ -97,6 +96,9 @@ async function getArticlesWithDetails(whereClause = '', params = [], sort = 'cre
   `;
   const countResult = await get(countSql, countParams);
   const total = countResult ? countResult.total : 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const validatedPage = Math.min(Math.max(1, page), totalPages);
+  const offset = (validatedPage - 1) * pageSize;
 
   const needsLikeJoin = sort === 'likes_desc' || sort === 'likes_asc';
   let dataSql;
@@ -147,9 +149,9 @@ async function getArticlesWithDetails(whereClause = '', params = [], sort = 'cre
   return {
     articles,
     total,
-    page,
+    page: validatedPage,
     pageSize,
-    totalPages: Math.ceil(total / pageSize)
+    totalPages
   };
 }
 
@@ -290,7 +292,7 @@ app.get('/api/articles', async (req, res) => {
 
 app.get('/api/articles/search', async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, page, pageSize } = req.query;
     
     if (!q || !q.trim()) {
       return res.status(400).json({ error: '搜索关键词不能为空' });
@@ -298,6 +300,18 @@ app.get('/api/articles/search', async (req, res) => {
     
     const keyword = q.trim();
     const likeKeyword = `%${keyword}%`;
+    const pageValue = Math.max(1, parseInt(page) || 1);
+    const pageSizeValue = Math.min(100, Math.max(1, parseInt(pageSize) || 10));
+
+    const countResult = await get(`
+      SELECT COUNT(*) as total
+      FROM articles a
+      WHERE a.title LIKE ? OR a.content LIKE ?
+    `, [likeKeyword, likeKeyword]);
+    const total = countResult ? countResult.total : 0;
+    const totalPages = Math.max(1, Math.ceil(total / pageSizeValue));
+    const validatedPage = Math.min(pageValue, totalPages);
+    const offset = (validatedPage - 1) * pageSizeValue;
     
     const articles = await all(`
       SELECT 
@@ -316,7 +330,8 @@ app.get('/api/articles/search', async (req, res) => {
       LEFT JOIN categories c ON a.category_id = c.id
       WHERE a.title LIKE ? OR a.content LIKE ?
       ORDER BY match_score DESC, a.created_at DESC
-    `, [likeKeyword, likeKeyword, likeKeyword, likeKeyword]);
+      LIMIT ? OFFSET ?
+    `, [likeKeyword, likeKeyword, likeKeyword, likeKeyword, pageSizeValue, offset]);
     
     for (const article of articles) {
       const tags = await all(`
@@ -336,7 +351,10 @@ app.get('/api/articles/search', async (req, res) => {
     
     res.json({
       keyword,
-      total: articles.length,
+      total,
+      page: validatedPage,
+      pageSize: pageSizeValue,
+      totalPages,
       articles
     });
   } catch (error) {

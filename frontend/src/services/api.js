@@ -126,6 +126,8 @@ export async function getAllComments() {
 export async function searchArticles(keyword, options = {}) {
   const params = new URLSearchParams();
   params.append('q', keyword);
+  if (options.page) params.append('page', options.page);
+  if (options.pageSize) params.append('pageSize', options.pageSize);
   return request(`/articles/search?${params.toString()}`, options);
 }
 

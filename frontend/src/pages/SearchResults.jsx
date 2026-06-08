@@ -2,16 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { searchArticles, getHotSearches } from '../services/api';
 import { debounce } from '../utils/debounce';
+import Pagination from '../components/Pagination';
 
 export default function SearchResults() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const keyword = searchParams.get('q') || '';
+  const pageParam = parseInt(searchParams.get('page')) || 1;
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchResult, setSearchResult] = useState(null);
   const [hotSearches, setHotSearches] = useState([]);
+  const [currentPage, setCurrentPage] = useState(pageParam);
+  const pageSize = 10;
 
   useEffect(() => {
     async function fetchHotSearches() {
@@ -25,43 +29,60 @@ export default function SearchResults() {
     fetchHotSearches();
   }, []);
 
-  const doSearch = useCallback(async (searchKeyword) => {
+  const doSearch = useCallback(async (searchKeyword, page) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await searchArticles(searchKeyword);
+      const data = await searchArticles(searchKeyword, { page, pageSize });
       setSearchResult(data);
+      if (data.page !== page) {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('page', data.page.toString());
+        setSearchParams(newParams);
+        setCurrentPage(data.page);
+      }
     } catch (err) {
       setError(err.message || '搜索失败');
       setSearchResult(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   const debouncedSearch = useCallback(
-    debounce((searchKeyword) => {
-      doSearch(searchKeyword);
+    debounce((searchKeyword, page) => {
+      doSearch(searchKeyword, page);
     }, 300),
     [doSearch]
   );
 
   useEffect(() => {
+    const page = parseInt(searchParams.get('page')) || 1;
+    setCurrentPage(page);
     if (!keyword) {
       setSearchResult(null);
       return;
     }
-
-    debouncedSearch(keyword);
-  }, [keyword, debouncedSearch]);
+    debouncedSearch(keyword, page);
+  }, [keyword, currentPage, searchParams, debouncedSearch]);
 
   const handleHotSearchClick = (hotKeyword) => {
     navigate(`/search?q=${encodeURIComponent(hotKeyword)}`);
   };
 
+  const handlePageChange = (page) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('page', page.toString());
+    setSearchParams(newParams);
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const renderHighlighted = (html) => {
     return <span dangerouslySetInnerHTML={{ __html: html }} />;
   };
+
+  const showPagination = searchResult && searchResult.totalPages > 1;
 
   return (
     <div className="search-results-page">
@@ -93,60 +114,71 @@ export default function SearchResults() {
         {!loading && !error && searchResult && (
           <>
             {searchResult.articles.length > 0 ? (
-              <div className="search-results-list">
-                {searchResult.articles.map((article) => (
-                  <div key={article.id} className="search-result-item">
-                    <div className="search-result-header">
-                      <span className="article-author">{article.author}</span>
-                      <span className="article-date">
-                        {new Date(article.created_at).toLocaleDateString('zh-CN')}
-                      </span>
-                      <span className="match-score">
-                        匹配度: {article.match_score}
-                      </span>
-                    </div>
-                    
-                    <h2 className="search-result-title">
-                      <Link to={`/article/${article.id}`}>
-                        {renderHighlighted(article.title_highlighted)}
-                      </Link>
-                    </h2>
-
-                    {(article.category_name || (article.tags && article.tags.length > 0)) && (
-                      <div className="article-card-meta">
-                        {article.category_name && (
-                          <Link to={`/?category=${article.category_id}`} className="article-category">
-                            {article.category_name}
-                          </Link>
-                        )}
-                        {article.tags && article.tags.length > 0 && (
-                          <div className="article-tags">
-                            {article.tags.slice(0, 3).map(tag => (
-                              <Link 
-                                key={tag.id} 
-                                to={`/?tag=${tag.id}`} 
-                                className="article-tag"
-                              >
-                                #{tag.name}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
+              <>
+                <div className="search-results-list">
+                  {searchResult.articles.map((article) => (
+                    <div key={article.id} className="search-result-item">
+                      <div className="search-result-header">
+                        <span className="article-author">{article.author}</span>
+                        <span className="article-date">
+                          {new Date(article.created_at).toLocaleDateString('zh-CN')}
+                        </span>
+                        <span className="match-score">
+                          匹配度: {article.match_score}
+                        </span>
                       </div>
-                    )}
+                      
+                      <h2 className="search-result-title">
+                        <Link to={`/article/${article.id}`}>
+                          {renderHighlighted(article.title_highlighted)}
+                        </Link>
+                      </h2>
 
-                    <p className="search-result-excerpt">
-                      {renderHighlighted(article.excerpt_highlighted)}
-                    </p>
+                      {(article.category_name || (article.tags && article.tags.length > 0)) && (
+                        <div className="article-card-meta">
+                          {article.category_name && (
+                            <Link to={`/?category=${article.category_id}`} className="article-category">
+                              {article.category_name}
+                            </Link>
+                          )}
+                          {article.tags && article.tags.length > 0 && (
+                            <div className="article-tags">
+                              {article.tags.slice(0, 3).map(tag => (
+                                <Link 
+                                  key={tag.id} 
+                                  to={`/?tag=${tag.id}`} 
+                                  className="article-tag"
+                                >
+                                  #{tag.name}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                    <div className="search-result-footer">
-                      <Link to={`/article/${article.id}`} className="read-more">
-                        阅读全文 →
-                      </Link>
+                      <p className="search-result-excerpt">
+                        {renderHighlighted(article.excerpt_highlighted)}
+                      </p>
+
+                      <div className="search-result-footer">
+                        <Link to={`/article/${article.id}`} className="read-more">
+                          阅读全文 →
+                        </Link>
+                      </div>
                     </div>
+                  ))}
+                </div>
+                {showPagination && (
+                  <div className="pagination-wrapper">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={searchResult.totalPages}
+                      onPageChange={handlePageChange}
+                    />
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             ) : (
               <div className="search-no-results">
                 <div className="no-results-icon">🔍</div>
