@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats, pinArticle, exportArticlesBatch, downloadFromResponse } from '../services/api';
+import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats, pinArticle, exportArticlesBatch, exportArticle, downloadFromResponse } from '../services/api';
 import Pagination from '../components/Pagination';
 
 const SORT_OPTIONS = [
@@ -41,6 +41,9 @@ export default function Admin() {
   const [exporting, setExporting] = useState(false);
   const [showBatchExportMenu, setShowBatchExportMenu] = useState(false);
   const batchExportMenuRef = useRef(null);
+  const [showRowExportMenu, setShowRowExportMenu] = useState(null);
+  const [rowExporting, setRowExporting] = useState(null);
+  const rowExportMenuRefs = useRef({});
 
   const [articlesPage, setArticlesPage] = useState(1);
   const [articlesTotalPages, setArticlesTotalPages] = useState(1);
@@ -79,14 +82,33 @@ export default function Admin() {
       if (batchExportMenuRef.current && !batchExportMenuRef.current.contains(event.target)) {
         setShowBatchExportMenu(false);
       }
+      if (showRowExportMenu) {
+        const ref = rowExportMenuRefs.current[showRowExportMenu];
+        if (ref && !ref.contains(event.target)) {
+          setShowRowExportMenu(null);
+        }
+      }
     }
-    if (showBatchExportMenu) {
+    if (showBatchExportMenu || showRowExportMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showBatchExportMenu]);
+  }, [showBatchExportMenu, showRowExportMenu]);
+
+  async function handleRowExport(articleId, format) {
+    try {
+      setRowExporting(articleId);
+      setShowRowExportMenu(null);
+      const response = await exportArticle(articleId, format);
+      await downloadFromResponse(response);
+    } catch (err) {
+      setError('导出失败：' + (err.message || '未知错误'));
+    } finally {
+      setRowExporting(null);
+    }
+  }
 
   function toggleSelectArticle(id, isDraft = false) {
     const setSelected = isDraft ? setSelectedDraftIds : setSelectedArticleIds;
@@ -534,13 +556,48 @@ export default function Admin() {
                                   >
                                     编辑
                                   </button>
+                                  <div
+                                    className="row-export-dropdown"
+                                    ref={(el) => { rowExportMenuRefs.current[`article-${article.id}`] = el; }}
+                                  >
+                                    <button
+                                      className="btn-action"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowRowExportMenu(showRowExportMenu === `article-${article.id}` ? null : `article-${article.id}`);
+                                      }}
+                                      disabled={rowExporting === article.id}
+                                    >
+                                      {rowExporting === article.id ? '导出中...' : '导出'}
+                                    </button>
+                                    {showRowExportMenu === `article-${article.id}` && (
+                                      <div className="export-menu export-menu-sm">
+                                        <button
+                                          className="export-menu-item"
+                                          onClick={() => handleRowExport(article.id, 'markdown')}
+                                          disabled={rowExporting === article.id}
+                                        >
+                                          <span>📝</span>
+                                          <span>导出为 Markdown</span>
+                                        </button>
+                                        <button
+                                          className="export-menu-item"
+                                          onClick={() => handleRowExport(article.id, 'pdf')}
+                                          disabled={rowExporting === article.id}
+                                        >
+                                          <span>📄</span>
+                                          <span>导出为 PDF</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                   <button
                                     className="btn-action btn-delete"
                                     onClick={() => confirmDelete(article.id, 'article')}
                                   >
                                     删除
                                   </button>
-                                  </td>
+                                </td>
                               </tr>
                             ); })}
                           </tbody>
@@ -732,6 +789,41 @@ export default function Admin() {
                                   >
                                     编辑
                                   </button>
+                                  <div
+                                    className="row-export-dropdown"
+                                    ref={(el) => { rowExportMenuRefs.current[`draft-${draft.id}`] = el; }}
+                                  >
+                                    <button
+                                      className="btn-action"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowRowExportMenu(showRowExportMenu === `draft-${draft.id}` ? null : `draft-${draft.id}`);
+                                      }}
+                                      disabled={rowExporting === draft.id}
+                                    >
+                                      {rowExporting === draft.id ? '导出中...' : '导出'}
+                                    </button>
+                                    {showRowExportMenu === `draft-${draft.id}` && (
+                                      <div className="export-menu export-menu-sm">
+                                        <button
+                                          className="export-menu-item"
+                                          onClick={() => handleRowExport(draft.id, 'markdown')}
+                                          disabled={rowExporting === draft.id}
+                                        >
+                                          <span>📝</span>
+                                          <span>导出为 Markdown</span>
+                                        </button>
+                                        <button
+                                          className="export-menu-item"
+                                          onClick={() => handleRowExport(draft.id, 'pdf')}
+                                          disabled={rowExporting === draft.id}
+                                        >
+                                          <span>📄</span>
+                                          <span>导出为 PDF</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                   <button
                                     className="btn-action btn-delete"
                                     onClick={() => confirmDelete(draft.id, 'article')}

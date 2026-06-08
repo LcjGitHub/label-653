@@ -2835,6 +2835,18 @@ a:hover {
   overflow: hidden;
 }
 
+.export-menu-sm {
+  min-width: 180px;
+  right: 0;
+  left: auto;
+  margin-top: 4px;
+}
+
+.row-export-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
 .export-menu-item {
   display: flex;
   align-items: center;

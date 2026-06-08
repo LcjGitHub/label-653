@@ -451,6 +451,32 @@ app.get('/api/articles/search', async (req, res) => {
   }
 });
 
+const fs = require('fs');
+const path = require('path');
+const { PassThrough } = require('stream');
+
+const CHINESE_FONT_PATHS = [
+  'C:\\Windows\\Fonts\\simhei.ttf',
+  'C:\\Windows\\Fonts\\simsun.ttc',
+  'C:\\Windows\\Fonts\\msyh.ttc',
+  '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+  '/System/Library/Fonts/PingFang.ttc',
+  '/System/Library/Fonts/STHeiti Medium.ttc'
+];
+
+let CHINESE_FONT_PATH = null;
+for (const fontPath of CHINESE_FONT_PATHS) {
+  try {
+    if (fs.existsSync(fontPath)) {
+      CHINESE_FONT_PATH = fontPath;
+      break;
+    }
+  } catch (e) {
+    continue;
+  }
+}
+
 function htmlToMarkdown(html) {
   const turndownService = new TurndownService({
     headingStyle: 'atx',
@@ -482,39 +508,144 @@ function articleToMarkdown(article) {
   return md;
 }
 
-function generatePdf(article, res) {
-  const doc = new PDFDocument({
-    size: 'A4',
-    margins: { top: 50, bottom: 50, left: 50, right: 50 }
+function htmlToTextWithFormatting(html) {
+  if (!html) return '';
+  
+  let text = html;
+  
+  text = text.replace(/<\/(h[1-6]|p|div|li|tr|blockquote)>/gi, '\n\n');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/li>/gi, '\n');
+  text = text.replace(/<li[^>]*>/gi, '• ');
+  text = text.replace(/<(h[1-6])[^>]*>(.*?)<\/\1>/gi, function(match, tag, content) {
+    const level = parseInt(tag.charAt(1));
+    const prefix = '#'.repeat(level) + ' ';
+    return '\n\n' + prefix + stripHtml(content) + '\n\n';
   });
-  
-  doc.pipe(res);
-  
-  doc.fontSize(24).text(article.title, { align: 'center' });
-  doc.moveDown();
-  
-  doc.fontSize(10).fillColor('#666666');
-  doc.text(`作者: ${article.author}`, { align: 'center' });
-  doc.text(`发布时间: ${new Date(article.created_at).toLocaleString('zh-CN')}`, { align: 'center' });
-  if (article.category_name) {
-    doc.text(`分类: ${article.category_name}`, { align: 'center' });
-  }
-  if (article.tags && article.tags.length > 0) {
-    doc.text(`标签: ${article.tags.map(t => t.name).join(', ')}`, { align: 'center' });
-  }
-  doc.moveDown();
-  
-  doc.strokeColor('#cccccc').lineWidth(1).moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-  doc.moveDown();
-  
-  doc.fillColor('#333333').fontSize(12);
-  const plainText = stripHtml(article.content);
-  doc.text(plainText, {
-    align: 'left',
-    lineGap: 5
+  text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, function(match, content) {
+    return '`' + stripHtml(content) + '`';
   });
+  text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, function(match, content) {
+    return '\n\n' + stripHtml(content).split('\n').map(l => '    ' + l).join('\n') + '\n\n';
+  });
+  text = text.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, function(match, content) {
+    return '【' + stripHtml(content) + '】';
+  });
+  text = text.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, function(match, content) {
+    return '【' + stripHtml(content) + '】';
+  });
+  text = text.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, function(match, content) {
+    return '《' + stripHtml(content) + '》';
+  });
+  text = text.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, function(match, content) {
+    return '《' + stripHtml(content) + '》';
+  });
+  text = text.replace(/<[^>]+>/g, '');
+  text = text.replace(/&nbsp;/gi, ' ');
+  text = text.replace(/&amp;/gi, '&');
+  text = text.replace(/&lt;/gi, '<');
+  text = text.replace(/&gt;/gi, '>');
+  text = text.replace(/&quot;/gi, '"');
+  text = text.replace(/&#39;/gi, "'");
+  text = text.replace(/\n{3,}/g, '\n\n');
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.trim();
   
-  doc.end();
+  return text;
+}
+
+function generateArticlePdfBuffer(article) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 50, bottom: 50, left: 50, right: 50 }
+      });
+      
+      if (CHINESE_FONT_PATH) {
+        try {
+          doc.registerFont('chinese', CHINESE_FONT_PATH);
+          doc.font('chinese');
+        } catch (e) {
+          console.warn('注册中文字体失败，使用默认字体:', e.message);
+        }
+      }
+      
+      const chunks = [];
+      const bufferStream = new PassThrough();
+      bufferStream.on('data', (chunk) => chunks.push(chunk));
+      bufferStream.on('end', () => resolve(Buffer.concat(chunks)));
+      bufferStream.on('error', reject);
+      
+      doc.pipe(bufferStream);
+      
+      doc.fontSize(24).text(article.title || '无标题', { align: 'center' });
+      doc.moveDown(1);
+      
+      doc.fontSize(10).fillColor('#666666');
+      doc.text(`作者: ${article.author || '匿名'}`, { align: 'center' });
+      doc.text(`发布时间: ${new Date(article.created_at).toLocaleString('zh-CN')}`, { align: 'center' });
+      if (article.category_name) {
+        doc.text(`分类: ${article.category_name}`, { align: 'center' });
+      }
+      if (article.tags && article.tags.length > 0) {
+        doc.text(`标签: ${article.tags.map(t => t.name).join(', ')}`, { align: 'center' });
+      }
+      doc.moveDown(1);
+      
+      doc.strokeColor('#cccccc').lineWidth(1);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+      doc.moveDown(1);
+      
+      doc.fillColor('#333333').fontSize(12);
+      const formattedText = htmlToTextWithFormatting(article.content);
+      
+      const paragraphs = formattedText.split(/\n\n+/);
+      paragraphs.forEach((para, index) => {
+        if (para.trim()) {
+          if (para.startsWith('#')) {
+            const match = para.match(/^(#{1,6})\s+(.*)$/);
+            if (match) {
+              const level = match[1].length;
+              const headingSize = Math.max(14, 22 - level * 2);
+              doc.fontSize(headingSize).fillColor('#1a1a1a').text(match[2]);
+              doc.moveDown(0.5);
+              doc.fontSize(12).fillColor('#333333');
+            } else {
+              doc.text(para, { lineGap: 5 });
+              doc.moveDown(0.3);
+            }
+          } else if (para.startsWith('    ')) {
+            doc.fillColor('#1a1a1a');
+            doc.fontSize(10);
+            doc.text(para.replace(/^    /gm, '  '), { lineGap: 2 });
+            doc.fontSize(12);
+            doc.fillColor('#333333');
+            doc.moveDown(0.3);
+          } else {
+            doc.text(para, { lineGap: 5 });
+            doc.moveDown(0.3);
+          }
+        }
+      });
+      
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function generatePdf(article, res) {
+  try {
+    const buffer = await generateArticlePdfBuffer(article);
+    res.send(buffer);
+  } catch (err) {
+    console.error('生成 PDF 失败:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: '生成 PDF 失败' });
+    }
+  }
 }
 
 app.get('/api/articles/:id/export', async (req, res) => {
@@ -532,7 +663,7 @@ app.get('/api/articles/:id/export', async (req, res) => {
     if (format === 'pdf') {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.pdf"`);
-      generatePdf(article, res);
+      await generatePdf(article, res);
     } else {
       const markdown = articleToMarkdown(article);
       res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
@@ -572,7 +703,7 @@ app.post('/api/articles/export/batch', async (req, res) => {
       if (format === 'pdf') {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeTitle)}.pdf"`);
-        return generatePdf(article, res);
+        return await generatePdf(article, res);
       } else {
         const markdown = articleToMarkdown(article);
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
@@ -585,53 +716,30 @@ app.post('/api/articles/export/batch', async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     res.setHeader('Content-Disposition', `attachment; filename="articles_export_${timestamp}.zip"`);
     
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = archiver.create('zip', { zlib: { level: 9 } });
+    
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: '压缩文件生成失败' });
+      }
+    });
+    
     archive.pipe(res);
     
     for (const article of articles) {
       const safeTitle = (article.title || `article_${article.id}`).replace(/[<>:"/\\|?*]/g, '_');
       
       if (format === 'pdf') {
-        const chunks = [];
-        const stream = require('stream');
-        const doc = new PDFDocument({
-          size: 'A4',
-          margins: { top: 50, bottom: 50, left: 50, right: 50 }
-        });
-        
-        const bufferStream = new stream.PassThrough();
-        doc.pipe(bufferStream);
-        
-        doc.fontSize(24).text(article.title, { align: 'center' });
-        doc.moveDown();
-        doc.fontSize(10).fillColor('#666666');
-        doc.text(`作者: ${article.author}`, { align: 'center' });
-        doc.text(`发布时间: ${new Date(article.created_at).toLocaleString('zh-CN')}`, { align: 'center' });
-        if (article.category_name) doc.text(`分类: ${article.category_name}`, { align: 'center' });
-        if (article.tags && article.tags.length > 0) {
-          doc.text(`标签: ${article.tags.map(t => t.name).join(', ')}`, { align: 'center' });
-        }
-        doc.moveDown();
-        doc.strokeColor('#cccccc').lineWidth(1).moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-        doc.moveDown();
-        doc.fillColor('#333333').fontSize(12);
-        doc.text(stripHtml(article.content), { align: 'left', lineGap: 5 });
-        doc.end();
-        
-        const pdfChunks = [];
-        await new Promise((resolve) => {
-          bufferStream.on('data', (chunk) => pdfChunks.push(chunk));
-          bufferStream.on('end', resolve);
-        });
-        const pdfBuffer = Buffer.concat(pdfChunks);
+        const pdfBuffer = await generateArticlePdfBuffer(article);
         archive.append(pdfBuffer, { name: `${safeTitle}.pdf` });
       } else {
         const markdown = articleToMarkdown(article);
-        archive.append(markdown, { name: `${safeTitle}.md` });
+        archive.append(Buffer.from(markdown, 'utf8'), { name: `${safeTitle}.md` });
       }
     }
     
-    archive.finalize();
+    await archive.finalize();
   } catch (error) {
     console.error('批量导出文章失败:', error);
     if (!res.headersSent) {
