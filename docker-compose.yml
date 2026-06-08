@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-blog-backend:latest}
+    container_name: blog-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+    volumes:
+      - blog-data:/app/data
+    ports:
+      - "3002:3002"
+    networks:
+      - blog-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/categories"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-blog-frontend:latest}
+    container_name: blog-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - blog-network
+
+volumes:
+  blog-data:
+    name: blog-data
+
+networks:
+  blog-network:
+    driver: bridge
