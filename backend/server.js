@@ -296,7 +296,7 @@ app.get('/api/categories', async (req, res) => {
     const categories = await all(`
       SELECT c.*, COUNT(a.id) as article_count
       FROM categories c
-      LEFT JOIN articles a ON c.id = a.category_id
+      LEFT JOIN articles a ON c.id = a.category_id AND a.status = 'published'
       GROUP BY c.id
       ORDER BY c.name
     `);
@@ -313,6 +313,7 @@ app.get('/api/tags', async (req, res) => {
       SELECT t.*, COUNT(at.article_id) as article_count
       FROM tags t
       LEFT JOIN article_tags at ON t.id = at.tag_id
+      LEFT JOIN articles a ON at.article_id = a.id AND a.status = 'published'
       GROUP BY t.id
       ORDER BY t.name
     `);
@@ -327,19 +328,19 @@ app.get('/api/articles', async (req, res) => {
   try {
     const { category, tag, sort, page, pageSize } = req.query;
 
-    let whereClause = '';
-    let params = [];
+    let whereClause = 'WHERE a.status = ?';
+    let params = ['published'];
 
     if (category) {
-      whereClause = 'WHERE c.id = ?';
-      params = [parseInt(category)];
+      whereClause = 'WHERE a.status = ? AND c.id = ?';
+      params = ['published', parseInt(category)];
     } else if (tag) {
       whereClause = `
         INNER JOIN article_tags at ON a.id = at.article_id
         INNER JOIN tags t ON at.tag_id = t.id
-        WHERE t.id = ?
+        WHERE a.status = ? AND t.id = ?
       `;
-      params = [parseInt(tag)];
+      params = ['published', parseInt(tag)];
     }
 
     const sortValue = sort || 'created_desc';
@@ -351,6 +352,25 @@ app.get('/api/articles', async (req, res) => {
   } catch (error) {
     console.error('获取文章列表失败:', error);
     res.status(500).json({ error: '获取文章列表失败' });
+  }
+});
+
+app.get('/api/articles/drafts/list', async (req, res) => {
+  try {
+    const { sort, page, pageSize } = req.query;
+
+    const whereClause = 'WHERE a.status = ?';
+    const params = ['draft'];
+
+    const sortValue = sort || 'updated_desc';
+    const pageValue = Math.max(1, parseInt(page) || 1);
+    const pageSizeValue = Math.min(100, Math.max(1, parseInt(pageSize) || 10));
+
+    const result = await getArticlesWithDetails(whereClause, params, sortValue, pageValue, pageSizeValue);
+    res.json(result);
+  } catch (error) {
+    console.error('获取草稿列表失败:', error);
+    res.status(500).json({ error: '获取草稿列表失败' });
   }
 });
 
@@ -370,8 +390,8 @@ app.get('/api/articles/search', async (req, res) => {
     const countResult = await get(`
       SELECT COUNT(*) as total
       FROM articles a
-      WHERE a.title LIKE ? OR a.content LIKE ?
-    `, [likeKeyword, likeKeyword]);
+      WHERE a.status = ? AND (a.title LIKE ? OR a.content LIKE ?)
+    `, ['published', likeKeyword, likeKeyword]);
     const total = countResult ? countResult.total : 0;
     const totalPages = Math.max(1, Math.ceil(total / pageSizeValue));
     const validatedPage = Math.min(pageValue, totalPages);
@@ -392,10 +412,10 @@ app.get('/api/articles/search', async (req, res) => {
         END) as match_score
       FROM articles a
       LEFT JOIN categories c ON a.category_id = c.id
-      WHERE a.title LIKE ? OR a.content LIKE ?
+      WHERE a.status = ? AND (a.title LIKE ? OR a.content LIKE ?)
       ORDER BY match_score DESC, a.created_at DESC
       LIMIT ? OFFSET ?
-    `, [likeKeyword, likeKeyword, likeKeyword, likeKeyword, pageSizeValue, offset]);
+    `, [likeKeyword, likeKeyword, 'published', likeKeyword, likeKeyword, pageSizeValue, offset]);
     
     for (const article of articles) {
       const tags = await all(`
@@ -434,6 +454,7 @@ app.get('/api/articles/stats', async (req, res) => {
       SELECT 
         a.id,
         a.title,
+        a.status,
         COALESCE(l.like_count, 0) as like_count,
         COALESCE(f.favorite_count, 0) as favorite_count,
         COALESCE(c.comment_count, 0) as comment_count
@@ -501,30 +522,35 @@ async function getOrCreateTag(tagName) {
 
 app.post('/api/articles', async (req, res) => {
   try {
-    const { title, content, author, category_id, tags } = req.body;
+    const { title, content, author, category_id, tags, status } = req.body;
+    const articleStatus = status === 'draft' ? 'draft' : 'published';
     
     if (!title || !title.trim()) {
       return res.status(400).json({ error: '文章标题不能为空' });
     }
     
-    if (!content) {
-      return res.status(400).json({ error: '文章内容不能为空' });
-    }
-    
-    const sanitizedContent = sanitizeHtml(content);
-    const plainContent = stripHtml(sanitizedContent);
-    
-    if (!plainContent || !plainContent.trim()) {
-      return res.status(400).json({ error: '文章内容不能为空' });
+    let sanitizedContent = '';
+    if (articleStatus === 'published') {
+      if (!content) {
+        return res.status(400).json({ error: '文章内容不能为空' });
+      }
+      sanitizedContent = sanitizeHtml(content);
+      const plainContent = stripHtml(sanitizedContent);
+      if (!plainContent || !plainContent.trim()) {
+        return res.status(400).json({ error: '文章内容不能为空' });
+      }
+    } else {
+      sanitizedContent = content ? sanitizeHtml(content) : '';
     }
     
     const result = await run(
-      'INSERT INTO articles (title, content, author, category_id) VALUES (?, ?, ?, ?)',
+      'INSERT INTO articles (title, content, author, category_id, status) VALUES (?, ?, ?, ?, ?)',
       [
         title.trim(), 
         sanitizedContent, 
         author || '管理员',
-        category_id ? parseInt(category_id) : null
+        category_id ? parseInt(category_id) : null,
+        articleStatus
       ]
     );
 
@@ -557,35 +583,41 @@ app.post('/api/articles', async (req, res) => {
 app.put('/api/articles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, author, category_id, tags } = req.body;
-    
-    if (!title || !title.trim()) {
-      return res.status(400).json({ error: '文章标题不能为空' });
-    }
-    
-    if (!content) {
-      return res.status(400).json({ error: '文章内容不能为空' });
-    }
-    
-    const sanitizedContent = sanitizeHtml(content);
-    const plainContent = stripHtml(sanitizedContent);
-    
-    if (!plainContent || !plainContent.trim()) {
-      return res.status(400).json({ error: '文章内容不能为空' });
-    }
+    const { title, content, author, category_id, tags, status } = req.body;
     
     const exists = await get('SELECT * FROM articles WHERE id = ?', [parseInt(id)]);
     if (!exists) {
       return res.status(404).json({ error: '文章不存在' });
     }
     
+    const articleStatus = status === 'draft' ? 'draft' : (status === 'published' ? 'published' : exists.status);
+    
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: '文章标题不能为空' });
+    }
+    
+    let sanitizedContent;
+    if (articleStatus === 'published') {
+      if (!content) {
+        return res.status(400).json({ error: '文章内容不能为空' });
+      }
+      sanitizedContent = sanitizeHtml(content);
+      const plainContent = stripHtml(sanitizedContent);
+      if (!plainContent || !plainContent.trim()) {
+        return res.status(400).json({ error: '文章内容不能为空' });
+      }
+    } else {
+      sanitizedContent = content !== undefined ? sanitizeHtml(content) : exists.content;
+    }
+    
     await run(
-      'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE articles SET title = ?, content = ?, author = ?, category_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
       [
         title.trim(), 
         sanitizedContent, 
         author || exists.author,
         category_id !== undefined ? (category_id ? parseInt(category_id) : null) : exists.category_id,
+        articleStatus,
         parseInt(id)
       ]
     );
@@ -912,6 +944,7 @@ app.get('/api/hot-searches', async (req, res) => {
       FROM articles a
       LEFT JOIN article_tags at ON a.id = at.article_id
       LEFT JOIN tags t ON at.tag_id = t.id
+      WHERE a.status = 'published'
       GROUP BY a.id
     `);
     
@@ -954,8 +987,8 @@ app.get('/api/hot-searches', async (req, res) => {
       const likeKeyword = `%${keyword}%`;
       const result = await get(`
         SELECT COUNT(*) as cnt FROM articles 
-        WHERE title LIKE ? OR content LIKE ?
-      `, [likeKeyword, likeKeyword]);
+        WHERE status = ? AND (title LIKE ? OR content LIKE ?)
+      `, ['published', likeKeyword, likeKeyword]);
       
       if (result && result.cnt > 0) {
         validKeywords.push({
@@ -1003,26 +1036,27 @@ initDatabase().then(() => {
   app.listen(PORT, () => {
     console.log(`服务器运行在 http://localhost:${PORT}`);
     console.log(`API 接口:`);
-    console.log(`  GET    /api/categories            - 获取所有分类`);
-    console.log(`  GET    /api/tags                  - 获取所有标签`);
-    console.log(`  GET    /api/articles              - 获取文章列表(支持?category=id或?tag=id筛选)`);
-    console.log(`  GET    /api/articles/search       - 搜索文章(支持?q=关键词)`);
-    console.log(`  GET    /api/hot-searches          - 获取热门搜索词`);
-    console.log(`  GET    /api/articles/:id          - 获取单篇文章(含分类和标签)`);
-    console.log(`  POST   /api/articles              - 创建文章(支持category_id和tags)`);
-    console.log(`  PUT    /api/articles/:id          - 更新文章(支持category_id和tags)`);
-    console.log(`  DELETE /api/articles/:id          - 删除文章`);
-    console.log(`  GET    /api/articles/:id/comments - 获取文章评论列表`);
-    console.log(`  POST   /api/articles/:id/comments - 添加评论`);
-    console.log(`  DELETE /api/comments/:id          - 删除评论`);
-    console.log(`  GET    /api/comments              - 获取所有评论(管理)`);
-    console.log(`  POST   /api/articles/:id/like     - 点赞文章`);
-    console.log(`  DELETE /api/articles/:id/like     - 取消点赞`);
-    console.log(`  POST   /api/articles/:id/favorite - 收藏文章`);
-    console.log(`  DELETE /api/articles/:id/favorite - 取消收藏`);
-    console.log(`  GET    /api/articles/:id/likes    - 获取文章点赞状态`);
-    console.log(`  GET    /api/articles/:id/favorites- 获取文章收藏状态`);
-    console.log(`  GET    /api/articles/stats        - 获取所有文章统计数据`);
+    console.log(`  GET    /api/categories                - 获取所有分类`);
+    console.log(`  GET    /api/tags                      - 获取所有标签`);
+    console.log(`  GET    /api/articles                  - 获取已发布文章列表(支持?category=id或?tag=id筛选)`);
+    console.log(`  GET    /api/articles/drafts/list      - 获取草稿列表`);
+    console.log(`  GET    /api/articles/search           - 搜索文章(支持?q=关键词)`);
+    console.log(`  GET    /api/hot-searches              - 获取热门搜索词`);
+    console.log(`  GET    /api/articles/:id              - 获取单篇文章(含分类和标签)`);
+    console.log(`  POST   /api/articles                  - 创建文章(支持status:draft/published, category_id和tags)`);
+    console.log(`  PUT    /api/articles/:id              - 更新文章(支持status, category_id和tags)`);
+    console.log(`  DELETE /api/articles/:id              - 删除文章`);
+    console.log(`  GET    /api/articles/:id/comments     - 获取文章评论列表`);
+    console.log(`  POST   /api/articles/:id/comments     - 添加评论`);
+    console.log(`  DELETE /api/comments/:id              - 删除评论`);
+    console.log(`  GET    /api/comments                  - 获取所有评论(管理)`);
+    console.log(`  POST   /api/articles/:id/like         - 点赞文章`);
+    console.log(`  DELETE /api/articles/:id/like         - 取消点赞`);
+    console.log(`  POST   /api/articles/:id/favorite     - 收藏文章`);
+    console.log(`  DELETE /api/articles/:id/favorite     - 取消收藏`);
+    console.log(`  GET    /api/articles/:id/likes        - 获取文章点赞状态`);
+    console.log(`  GET    /api/articles/:id/favorites    - 获取文章收藏状态`);
+    console.log(`  GET    /api/articles/stats            - 获取所有文章统计数据`);
   });
 }).catch(error => {
   console.error('数据库初始化失败:', error);

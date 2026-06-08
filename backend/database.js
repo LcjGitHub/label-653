@@ -46,6 +46,7 @@ function initDatabase() {
               content TEXT NOT NULL,
               author TEXT DEFAULT '管理员',
               category_id INTEGER,
+              status TEXT DEFAULT 'published',
               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -187,10 +188,10 @@ function initDatabase() {
                     
                     if (row.count === 0) {
                       db.run(`
-                        INSERT INTO articles (title, content, author, category_id) VALUES 
-                        (?, ?, ?, 1),
-                        (?, ?, ?, 1),
-                        (?, ?, ?, 1)
+                        INSERT INTO articles (title, content, author, category_id, status) VALUES 
+                        (?, ?, ?, 1, 'published'),
+                        (?, ?, ?, 1, 'published'),
+                        (?, ?, ?, 1, 'published')
                       `, [
                         '欢迎使用博客系统', '这是一个基于节点服务框架、界面组件库与嵌入式数据库构建的完整博客系统。您可以在这里发布、编辑和删除文章，记录生活点滴与技术心得。', '系统管理员',
                         '前端开发最佳实践', '在现代前端开发中，代码规范与工程化至关重要。本文将分享项目结构设计、状态管理、性能优化等方面的实战经验，帮助您构建高质量的前端应用。', '技术小编',
@@ -237,8 +238,18 @@ function initDatabase() {
                     }
                     
                     const hasCategoryId = columns.some(col => col.name === 'category_id');
+                    const hasStatus = columns.some(col => col.name === 'status');
+                    
+                    let pendingAlters = 0;
+                    
+                    function checkDone() {
+                      if (pendingAlters === 0) {
+                        seedArticlesWithCategories();
+                      }
+                    }
                     
                     if (!hasCategoryId) {
+                      pendingAlters++;
                       db.run(`
                         ALTER TABLE articles ADD COLUMN category_id INTEGER
                       `, (err) => {
@@ -247,9 +258,27 @@ function initDatabase() {
                         } else {
                           console.log('已为 articles 表添加 category_id 列');
                         }
-                        seedArticlesWithCategories();
+                        pendingAlters--;
+                        checkDone();
                       });
-                    } else {
+                    }
+                    
+                    if (!hasStatus) {
+                      pendingAlters++;
+                      db.run(`
+                        ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'published'
+                      `, (err) => {
+                        if (err) {
+                          console.warn('添加 status 列失败:', err.message);
+                        } else {
+                          console.log('已为 articles 表添加 status 列');
+                        }
+                        pendingAlters--;
+                        checkDone();
+                      });
+                    }
+                    
+                    if (hasCategoryId && hasStatus) {
                       seedArticlesWithCategories();
                     }
                   });

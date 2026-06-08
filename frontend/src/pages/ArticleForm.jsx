@@ -20,6 +20,7 @@ export default function ArticleForm({ isEdit = false }) {
     author: '管理员',
     category_id: '',
     tags: [],
+    status: 'published',
   });
   const [categories, setCategories] = useState([]);
   const [allTags, setAllTags] = useState([]);
@@ -62,6 +63,7 @@ export default function ArticleForm({ isEdit = false }) {
           author: data.author,
           category_id: data.category_id || '',
           tags: data.tags || [],
+          status: data.status || 'published',
         });
       }
     } catch (err) {
@@ -159,18 +161,18 @@ export default function ArticleForm({ isEdit = false }) {
     }, 200);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    
+  async function handleSave(status) {
     if (!formData.title.trim()) {
       setError('文章标题不能为空');
       return;
     }
     
-    const plainContent = stripHtml(formData.content);
-    if (!plainContent.trim()) {
-      setError('文章内容不能为空');
-      return;
+    if (status === 'published') {
+      const plainContent = stripHtml(formData.content);
+      if (!plainContent.trim()) {
+        setError('文章内容不能为空');
+        return;
+      }
     }
 
     try {
@@ -182,21 +184,40 @@ export default function ArticleForm({ isEdit = false }) {
         content: formData.content,
         author: formData.author,
         category_id: formData.category_id || null,
-        tags: formData.tags.map(tag => tag.isNew ? { name: tag.name } : tag.id)
+        tags: formData.tags.map(tag => tag.isNew ? { name: tag.name } : tag.id),
+        status: status
       };
       
+      let result;
       if (isEdit) {
-        await updateArticle(id, submitData);
+        result = await updateArticle(id, submitData);
       } else {
-        await createArticle(submitData);
+        result = await createArticle(submitData);
       }
       
-      navigate('/');
+      if (status === 'published') {
+        navigate('/admin');
+      } else {
+        if (!isEdit && result && result.id) {
+          navigate(`/edit/${result.id}`);
+        } else {
+          setFormData(prev => ({ ...prev, status: 'draft' }));
+        }
+      }
     } catch (err) {
       setError(err.message || '保存失败');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    await handleSave('published');
+  }
+
+  async function handleSaveDraft() {
+    await handleSave('draft');
   }
 
   if (fetchLoading) {
@@ -213,7 +234,7 @@ export default function ArticleForm({ isEdit = false }) {
         <div className="error" ref={errorRef}>
           {error || '加载数据失败'}
         </div>
-        <Link to="/" className="back-link">← 返回列表</Link>
+        <Link to="/admin" className="back-link">← 返回管理</Link>
       </div>
     );
   }
@@ -226,8 +247,11 @@ export default function ArticleForm({ isEdit = false }) {
     <div className="container">
       <div className="form-container">
         <div className="form-header">
-          <h1>{isEdit ? '编辑文章' : '创建新文章'}</h1>
-          <Link to="/" className="back-link">← 返回列表</Link>
+          <h1>
+            {isEdit ? (formData.status === 'draft' ? '编辑草稿' : '编辑文章') : '创建新文章'}
+            {formData.status === 'draft' && <span className="badge badge-secondary" style={{ marginLeft: '10px' }}>草稿</span>}
+          </h1>
+          <Link to="/admin" className="back-link">← 返回管理</Link>
         </div>
 
         {error && (
@@ -345,17 +369,25 @@ export default function ArticleForm({ isEdit = false }) {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/admin')}
               disabled={loading}
             >
               取消
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSaveDraft}
+              disabled={loading}
+            >
+              {loading ? '保存中...' : '保存草稿'}
             </button>
             <button
               type="submit"
               className="btn btn-primary"
               disabled={loading}
             >
-              {loading ? '保存中...' : (isEdit ? '更新文章' : '发布文章')}
+              {loading ? '保存中...' : (isEdit && formData.status === 'draft' ? '发布文章' : (isEdit ? '更新并发布' : '发布文章'))}
             </button>
           </div>
         </form>

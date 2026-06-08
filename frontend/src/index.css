@@ -613,6 +613,18 @@ a:hover {
   border-bottom-color: var(--primary-color);
 }
 
+.admin-sub-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.admin-sub-tabs .tab-btn {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+}
+
 .badge {
   display: inline-block;
   padding: 4px 10px;

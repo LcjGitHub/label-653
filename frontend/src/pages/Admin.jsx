@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getArticles, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
+import { getArticles, getDrafts, deleteArticle, getAllComments, deleteComment, getArticleStats } from '../services/api';
 import Pagination from '../components/Pagination';
 
 const SORT_OPTIONS = [
@@ -12,14 +12,24 @@ const SORT_OPTIONS = [
   { value: 'likes_asc', label: '点赞最少' }
 ];
 
+const DRAFT_SORT_OPTIONS = [
+  { value: 'updated_desc', label: '最近更新' },
+  { value: 'updated_asc', label: '最早更新' },
+  { value: 'created_desc', label: '最新创建' },
+  { value: 'created_asc', label: '最早创建' }
+];
+
 export default function Admin() {
   const navigate = useNavigate();
   const errorRef = useRef(null);
   const [activeTab, setActiveTab] = useState('articles');
+  const [articleSubTab, setArticleSubTab] = useState('published');
   const [articles, setArticles] = useState([]);
+  const [drafts, setDrafts] = useState([]);
   const [comments, setComments] = useState([]);
   const [stats, setStats] = useState([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
+  const [draftsLoading, setDraftsLoading] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -32,15 +42,25 @@ export default function Admin() {
   const [articlesSort, setArticlesSort] = useState('created_desc');
   const articlesPageSize = 10;
 
+  const [draftsPage, setDraftsPage] = useState(1);
+  const [draftsTotalPages, setDraftsTotalPages] = useState(1);
+  const [draftsTotal, setDraftsTotal] = useState(0);
+  const [draftsSort, setDraftsSort] = useState('updated_desc');
+  const draftsPageSize = 10;
+
   useEffect(() => {
     if (activeTab === 'articles') {
-      fetchArticles();
+      if (articleSubTab === 'published') {
+        fetchArticles();
+      } else {
+        fetchDrafts();
+      }
     } else if (activeTab === 'comments') {
       fetchComments();
     } else {
       fetchStats();
     }
-  }, [activeTab, articlesPage, articlesSort]);
+  }, [activeTab, articleSubTab, articlesPage, articlesSort, draftsPage, draftsSort]);
 
   useEffect(() => {
     if (error && errorRef.current) {
@@ -75,6 +95,33 @@ export default function Admin() {
     setArticlesPage(1);
   }
 
+  async function fetchDrafts() {
+    try {
+      setDraftsLoading(true);
+      setError(null);
+      const result = await getDrafts({
+        page: draftsPage,
+        pageSize: draftsPageSize,
+        sort: draftsSort
+      });
+      if (result.page !== draftsPage) {
+        setDraftsPage(result.page);
+      }
+      setDrafts(result.articles || []);
+      setDraftsTotalPages(result.totalPages || 1);
+      setDraftsTotal(result.total || 0);
+    } catch (err) {
+      setError(err.message || '加载草稿列表失败');
+    } finally {
+      setDraftsLoading(false);
+    }
+  }
+
+  function handleDraftsSortChange(e) {
+    setDraftsSort(e.target.value);
+    setDraftsPage(1);
+  }
+
   async function fetchComments() {
     try {
       setCommentsLoading(true);
@@ -104,10 +151,18 @@ export default function Admin() {
   async function handleDeleteArticle(id) {
     try {
       await deleteArticle(id);
-      if (articles.length === 1 && articlesPage > 1) {
-        setArticlesPage(articlesPage - 1);
+      if (articleSubTab === 'published') {
+        if (articles.length === 1 && articlesPage > 1) {
+          setArticlesPage(articlesPage - 1);
+        } else {
+          fetchArticles();
+        }
       } else {
-        fetchArticles();
+        if (drafts.length === 1 && draftsPage > 1) {
+          setDraftsPage(draftsPage - 1);
+        } else {
+          fetchDrafts();
+        }
       }
       setDeleteId(null);
       setDeleteType(null);
@@ -140,6 +195,10 @@ export default function Admin() {
 
   function handleArticlesPageChange(page) {
     setArticlesPage(page);
+  }
+
+  function handleDraftsPageChange(page) {
+    setDraftsPage(page);
   }
 
   return (
@@ -186,107 +245,221 @@ export default function Admin() {
       <div className="admin-table-container">
         {(() => {
           if (activeTab === 'articles') {
-            if (articlesLoading) return <div className="loading">加载中...</div>;
-            if (articles.length === 0) {
-              return (
-                <div className="empty-state">
-                  <p>暂无文章</p>
-                  <Link to="/create" className="btn btn-primary">
-                    创建第一篇文章
-                  </Link>
-                </div>
-              );
-            }
             return (
               <>
-                <div className="list-toolbar admin-toolbar">
-                  <div className="list-info">
-                    <span>共 {articlesTotal} 篇文章</span>
-                  </div>
-                  <div className="sort-wrapper">
-                    <label htmlFor="admin-sort-select" className="sort-label">排序：</label>
-                    <select
-                      id="admin-sort-select"
-                      className="sort-select"
-                      value={articlesSort}
-                      onChange={handleSortChange}
-                    >
-                      {SORT_OPTIONS.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="admin-sub-tabs">
+                  <button
+                    className={`tab-btn ${articleSubTab === 'published' ? 'active' : ''}`}
+                    onClick={() => setArticleSubTab('published')}
+                  >
+                    已发布
+                  </button>
+                  <button
+                    className={`tab-btn ${articleSubTab === 'drafts' ? 'active' : ''}`}
+                    onClick={() => setArticleSubTab('drafts')}
+                  >
+                    草稿箱
+                  </button>
                 </div>
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>标题</th>
-                      <th>分类</th>
-                      <th>作者</th>
-                      <th>点赞数</th>
-                      <th>收藏数</th>
-                      <th>发布时间</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {articles.map(article => (
-                      <tr key={article.id}>
-                        <td>{article.id}</td>
-                        <td className="table-title">
-                          <Link to={`/article/${article.id}`}>{article.title}</Link>
-                        </td>
-                        <td>
-                          {article.category_name ? (
-                            <span className="badge badge-primary">
-                              {article.category_name}
-                            </span>
-                          ) : (
-                            <span className="text-muted">未分类</span>
-                          )}
-                        </td>
-                        <td>{article.author}</td>
-                        <td>
-                          <span className="badge badge-like">
-                            {article.like_count || 0}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="badge badge-favorite">
-                            {article.favorite_count || 0}
-                          </span>
-                        </td>
-                        <td>
-                          {new Date(article.created_at).toLocaleString('zh-CN')}
-                        </td>
-                        <td className="table-actions">
-                          <button
-                            className="btn-action btn-edit"
-                            onClick={() => navigate(`/edit/${article.id}`)}
-                          >
-                            编辑
-                          </button>
-                          <button
-                            className="btn-action btn-delete"
-                            onClick={() => confirmDelete(article.id, 'article')}
-                          >
-                            删除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="pagination-wrapper admin-pagination">
-                  <Pagination
-                    currentPage={articlesPage}
-                    totalPages={articlesTotalPages}
-                    onPageChange={handleArticlesPageChange}
-                  />
-                </div>
+
+                {articleSubTab === 'published' ? (
+                  <>
+                    {articlesLoading ? (
+                      <div className="loading">加载中...</div>
+                    ) : articles.length === 0 ? (
+                      <div className="empty-state">
+                        <p>暂无已发布文章</p>
+                        <Link to="/create" className="btn btn-primary">
+                          创建第一篇文章
+                        </Link>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="list-toolbar admin-toolbar">
+                          <div className="list-info">
+                            <span>共 {articlesTotal} 篇已发布文章</span>
+                          </div>
+                          <div className="sort-wrapper">
+                            <label htmlFor="admin-sort-select" className="sort-label">排序：</label>
+                            <select
+                              id="admin-sort-select"
+                              className="sort-select"
+                              value={articlesSort}
+                              onChange={handleSortChange}
+                            >
+                              {SORT_OPTIONS.map(option => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>标题</th>
+                              <th>分类</th>
+                              <th>作者</th>
+                              <th>点赞数</th>
+                              <th>收藏数</th>
+                              <th>发布时间</th>
+                              <th>操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {articles.map(article => (
+                              <tr key={article.id}>
+                                <td>{article.id}</td>
+                                <td className="table-title">
+                                  <Link to={`/article/${article.id}`}>{article.title}</Link>
+                                </td>
+                                <td>
+                                  {article.category_name ? (
+                                    <span className="badge badge-primary">
+                                      {article.category_name}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">未分类</span>
+                                  )}
+                                </td>
+                                <td>{article.author}</td>
+                                <td>
+                                  <span className="badge badge-like">
+                                    {article.like_count || 0}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="badge badge-favorite">
+                                    {article.favorite_count || 0}
+                                  </span>
+                                </td>
+                                <td>
+                                  {new Date(article.created_at).toLocaleString('zh-CN')}
+                                </td>
+                                <td className="table-actions">
+                                  <button
+                                    className="btn-action btn-edit"
+                                    onClick={() => navigate(`/edit/${article.id}`)}
+                                  >
+                                    编辑
+                                  </button>
+                                  <button
+                                    className="btn-action btn-delete"
+                                    onClick={() => confirmDelete(article.id, 'article')}
+                                  >
+                                    删除
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="pagination-wrapper admin-pagination">
+                          <Pagination
+                            currentPage={articlesPage}
+                            totalPages={articlesTotalPages}
+                            onPageChange={handleArticlesPageChange}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {draftsLoading ? (
+                      <div className="loading">加载中...</div>
+                    ) : drafts.length === 0 ? (
+                      <div className="empty-state">
+                        <p>暂无草稿</p>
+                        <Link to="/create" className="btn btn-primary">
+                          创建新草稿
+                        </Link>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="list-toolbar admin-toolbar">
+                          <div className="list-info">
+                            <span>共 {draftsTotal} 篇草稿</span>
+                          </div>
+                          <div className="sort-wrapper">
+                            <label htmlFor="draft-sort-select" className="sort-label">排序：</label>
+                            <select
+                              id="draft-sort-select"
+                              className="sort-select"
+                              value={draftsSort}
+                              onChange={handleDraftsSortChange}
+                            >
+                              {DRAFT_SORT_OPTIONS.map(option => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>标题</th>
+                              <th>分类</th>
+                              <th>作者</th>
+                              <th>更新时间</th>
+                              <th>操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {drafts.map(draft => (
+                              <tr key={draft.id}>
+                                <td>{draft.id}</td>
+                                <td className="table-title">
+                                  {draft.title}
+                                  <span className="badge badge-secondary" style={{ marginLeft: '8px' }}>草稿</span>
+                                </td>
+                                <td>
+                                  {draft.category_name ? (
+                                    <span className="badge badge-primary">
+                                      {draft.category_name}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">未分类</span>
+                                  )}
+                                </td>
+                                <td>{draft.author}</td>
+                                <td>
+                                  {new Date(draft.updated_at).toLocaleString('zh-CN')}
+                                </td>
+                                <td className="table-actions">
+                                  <button
+                                    className="btn-action btn-edit"
+                                    onClick={() => navigate(`/edit/${draft.id}`)}
+                                  >
+                                    编辑
+                                  </button>
+                                  <button
+                                    className="btn-action btn-delete"
+                                    onClick={() => confirmDelete(draft.id, 'article')}
+                                  >
+                                    删除
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="pagination-wrapper admin-pagination">
+                          <Pagination
+                            currentPage={draftsPage}
+                            totalPages={draftsTotalPages}
+                            onPageChange={handleDraftsPageChange}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </>
             );
           }

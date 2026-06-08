@@ -69,6 +69,16 @@ export async function getArticles(filters = {}) {
   return request(`/articles${queryString ? `?${queryString}` : ''}`);
 }
 
+export async function getDrafts(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.sort) params.append('sort', filters.sort);
+  if (filters.page) params.append('page', filters.page);
+  if (filters.pageSize) params.append('pageSize', filters.pageSize);
+  
+  const queryString = params.toString();
+  return request(`/articles/drafts/list${queryString ? `?${queryString}` : ''}`);
+}
+
 export async function getArticle(id) {
   return request(`/articles/${id}`);
 }
